@@ -22,7 +22,8 @@ async function bootstrap() {
     credentials: true,
   });
 
-  // Global prefix handled by nginx (preserves /api2/)
+  // ✅ Add global prefix to match nginx routing
+  app.setGlobalPrefix("api2");
 
   // Global validation pipe
   app.useGlobalPipes(
@@ -40,7 +41,6 @@ async function bootstrap() {
       "The Uplift Plan Management System API with IELTS Writing Assessment"
     )
     .setVersion("1.0")
-    .setBasePath("/api2")
     .addTag("plans")
     .addTag("user-plans")
     .addTag("ielts-writing")
