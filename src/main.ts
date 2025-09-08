@@ -41,7 +41,6 @@ async function bootstrap() {
     )
     .setVersion("1.0")
     .addServer("https://dead.uz/api2", "Production server")
-    .addServer("http://localhost:4000", "Local development")
     .addTag("plans")
     .addTag("user-plans")
     .addTag("ielts-writing")
@@ -68,7 +67,17 @@ async function bootstrap() {
   SwaggerModule.setup("docs", app, document, {
     swaggerOptions: {
       url: "/docs-json",
+      defaultModelsExpandDepth: -1,
+      defaultModelExpandDepth: 3,
+      docExpansion: "none",
+      servers: [
+        {
+          url: "https://dead.uz/api2",
+          description: "Production server",
+        },
+      ],
     },
+    customSiteTitle: "Uplift Plan API",
   });
 
   const port =
