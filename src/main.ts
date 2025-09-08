@@ -40,6 +40,7 @@ async function bootstrap() {
       "The Uplift Plan Management System API with IELTS Writing Assessment"
     )
     .setVersion("1.0")
+    .setBasePath("/api2")
     .addTag("plans")
     .addTag("user-plans")
     .addTag("ielts-writing")
@@ -63,10 +64,11 @@ async function bootstrap() {
 
   SwaggerModule.setup("swagger", app, document, {
     swaggerOptions: {
-      url: "/docs-json",
+      url: "/swagger-json",
       defaultModelsExpandDepth: -1,
       defaultModelExpandDepth: 3,
       docExpansion: "none",
+      basePath: "/api2",
       servers: [
         {
           url: "https://dead.uz",
