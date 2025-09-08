@@ -23,7 +23,9 @@ async function bootstrap() {
 
   // ✅ Set global prefix
   const globalPrefix = "api2";
-  app.setGlobalPrefix(globalPrefix);
+  app.setGlobalPrefix(globalPrefix, {
+    exclude: ["/"], // optional: root stays open
+  });
 
   const config = new DocumentBuilder()
     .setTitle("Uplift Plan API")
@@ -31,24 +33,19 @@ async function bootstrap() {
       "The Uplift Plan Management System API with IELTS Writing Assessment"
     )
     .setVersion("1.0")
-    .addServer("/api2", "Relative to domain") // works for both localhost + prod
-    .addServer("https://dead.uz/api2", "Production") // explicit absolute URL
+    .addServer(`/${globalPrefix}`, "Base API path") // 👈 relative path
     .addBearerAuth(
       { type: "http", scheme: "bearer", bearerFormat: "JWT" },
       "JWT-auth"
     )
     .build();
 
-  const document = SwaggerModule.createDocument(app, config);
+  const document = SwaggerModule.createDocument(app, config, {
+    deepScanRoutes: true, // 👈 forces scanning with prefix
+  });
 
-  // 👇 mount Swagger UI at a DIFFERENT path
   SwaggerModule.setup(`${globalPrefix}/docs`, app, document, {
-    swaggerOptions: {
-      persistAuthorization: true,
-      urls: [
-        { url: `/api2-json`, name: "API2" }, // 👈 this points to /api2-json instead of root /json
-      ],
-    },
+    swaggerOptions: { persistAuthorization: true },
   });
 
   await app.listen(4000);
