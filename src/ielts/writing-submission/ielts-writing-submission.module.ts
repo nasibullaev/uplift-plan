@@ -3,7 +3,7 @@ import { MongooseModule } from "@nestjs/mongoose";
 import { IELTSWritingSubmissionController } from "./ielts-writing-submission.controller";
 import { IELTSAIController } from "./ielts-ai.controller";
 import { IELTSWritingSubmissionService } from "./ielts-writing-submission.service";
-import { OpenAIService } from "./openai.service";
+import { GeminiService } from "./gemini.service";
 import {
   IELTSWritingSubmission,
   IELTSWritingSubmissionSchema,
@@ -19,7 +19,7 @@ import {
     ]),
   ],
   controllers: [IELTSWritingSubmissionController, IELTSAIController],
-  providers: [IELTSWritingSubmissionService, OpenAIService],
-  exports: [IELTSWritingSubmissionService, OpenAIService],
+  providers: [IELTSWritingSubmissionService, GeminiService],
+  exports: [IELTSWritingSubmissionService, GeminiService],
 })
 export class IELTSWritingSubmissionModule {}

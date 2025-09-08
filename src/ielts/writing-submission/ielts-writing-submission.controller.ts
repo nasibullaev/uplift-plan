@@ -9,14 +9,26 @@ import {
   HttpCode,
   HttpStatus,
   Query,
+  UseGuards,
+  Request,
 } from "@nestjs/common";
-import { ApiTags, ApiOperation, ApiResponse, ApiQuery } from "@nestjs/swagger";
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiQuery,
+  ApiBearerAuth,
+} from "@nestjs/swagger";
 import { IELTSWritingSubmissionService } from "./ielts-writing-submission.service";
 import {
   CreateIELTSWritingSubmissionDto,
   UpdateIELTSWritingSubmissionDto,
   ObjectIdDto,
 } from "./dto/ielts-writing-submission.dto";
+import { JwtAuthGuard } from "../../auth/guards/jwt-auth.guard";
+import { RolesGuard } from "../../auth/guards/roles.guard";
+import { Roles } from "../../auth/decorators/roles.decorator";
+import { UserRole } from "../../users/schemas/user.schema";
 
 @ApiTags("ielts-writing-submission")
 @Controller("ielts-writing-submission")
@@ -26,6 +38,8 @@ export class IELTSWritingSubmissionController {
   ) {}
 
   @Post()
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth("JWT-auth")
   @ApiOperation({ summary: "Create a new IELTS writing submission" })
   @ApiResponse({
     status: 201,
@@ -33,12 +47,17 @@ export class IELTSWritingSubmissionController {
   })
   @ApiResponse({ status: 400, description: "Bad request" })
   async create(
-    @Body() createIELTSWritingSubmissionDto: CreateIELTSWritingSubmissionDto
+    @Body() createIELTSWritingSubmissionDto: CreateIELTSWritingSubmissionDto,
+    @Request() req
   ) {
+    // Add user ID to the submission
+    const submissionData = {
+      ...createIELTSWritingSubmissionDto,
+      user: req.user.sub,
+    };
+
     const ieltsWritingSubmission =
-      await this.ieltsWritingSubmissionService.create(
-        createIELTSWritingSubmissionDto
-      );
+      await this.ieltsWritingSubmissionService.create(submissionData);
     return {
       message: "IELTS writing submission created successfully",
       data: ieltsWritingSubmission,
@@ -46,7 +65,10 @@ export class IELTSWritingSubmissionController {
   }
 
   @Get()
-  @ApiOperation({ summary: "Get all IELTS writing submissions" })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  @ApiBearerAuth("JWT-auth")
+  @ApiOperation({ summary: "Get all IELTS writing submissions (Admin only)" })
   @ApiResponse({
     status: 200,
     description: "IELTS writing submissions retrieved successfully",
@@ -57,15 +79,17 @@ export class IELTSWritingSubmissionController {
     return { data: ieltsWritingSubmissions };
   }
 
-  @Get("user/:userId")
-  @ApiOperation({ summary: "Get IELTS writing submissions by user ID" })
+  @Get("my-submissions")
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth("JWT-auth")
+  @ApiOperation({ summary: "Get current user's IELTS writing submissions" })
   @ApiResponse({
     status: 200,
     description: "IELTS writing submissions retrieved successfully",
   })
-  async findByUserId(@Param("userId") userId: string) {
+  async getMySubmissions(@Request() req) {
     const ieltsWritingSubmissions =
-      await this.ieltsWritingSubmissionService.findByUserId(userId);
+      await this.ieltsWritingSubmissionService.findByUserId(req.user.sub);
     return { data: ieltsWritingSubmissions };
   }
 

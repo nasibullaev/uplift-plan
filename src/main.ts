@@ -30,6 +30,19 @@ async function bootstrap() {
     .addTag("ielts-writing")
     .addTag("ielts-writing-submission")
     .addTag("ielts-ai")
+    .addTag("users")
+    .addTag("auth")
+    .addBearerAuth(
+      {
+        type: "http",
+        scheme: "bearer",
+        bearerFormat: "JWT",
+        name: "JWT",
+        description: "Enter JWT token",
+        in: "header",
+      },
+      "JWT-auth"
+    )
     .build();
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup("api", app, document);

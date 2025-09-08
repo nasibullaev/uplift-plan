@@ -30,16 +30,14 @@ export class IELTSWritingSubmissionService {
   async findAll(): Promise<IELTSWritingSubmission[]> {
     return this.ieltsWritingSubmissionModel
       .find()
-      .populate("user")
-      .populate("writing")
+      .populate("user", "firstName lastName email role")
       .exec();
   }
 
   async findOne(id: ObjectIdType): Promise<IELTSWritingSubmission> {
     const ieltsWritingSubmission = await this.ieltsWritingSubmissionModel
       .findById(id)
-      .populate("user")
-      .populate("writing")
+      .populate("user", "firstName lastName email role")
       .exec();
     if (!ieltsWritingSubmission) {
       throw new NotFoundException("IELTS Writing submission not found");
@@ -48,10 +46,7 @@ export class IELTSWritingSubmissionService {
   }
 
   async findByUserId(userId: ObjectIdType): Promise<IELTSWritingSubmission[]> {
-    return this.ieltsWritingSubmissionModel
-      .find({ user: userId })
-      .populate("writing")
-      .exec();
+    return this.ieltsWritingSubmissionModel.find({ user: userId }).exec();
   }
 
   async update(
