@@ -62,7 +62,22 @@ async function bootstrap() {
     )
     .build();
   const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup("docs", app, document);
+
+  SwaggerModule.setup("docs", app, document, {
+    swaggerOptions: {
+      url: "/docs-json",
+      defaultModelsExpandDepth: -1,
+      defaultModelExpandDepth: 3,
+      docExpansion: "none",
+      servers: [
+        {
+          url: "https://dead.uz/api2",
+          description: "Production server",
+        },
+      ],
+    },
+    customSiteTitle: "Uplift Plan API",
+  });
 
   const port =
     process.env.PORT || (process.env.NODE_ENV === "production" ? 4000 : 3000);
