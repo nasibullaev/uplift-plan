@@ -41,6 +41,7 @@ async function bootstrap() {
       "The Uplift Plan Management System API with IELTS Writing Assessment"
     )
     .setVersion("1.0")
+    .setBasePath("/api2")
     .addTag("plans")
     .addTag("user-plans")
     .addTag("ielts-writing")
