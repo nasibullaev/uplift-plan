@@ -31,7 +31,7 @@ async function bootstrap() {
       "The Uplift Plan Management System API with IELTS Writing Assessment"
     )
     .setVersion("1.0")
-    .addServer("/api2") // 👈 this tells Swagger all endpoints start with /api2
+    .addServer(`/${globalPrefix}`) // ✅ tell Swagger to use /api2
     .addBearerAuth(
       { type: "http", scheme: "bearer", bearerFormat: "JWT" },
       "JWT-auth"
@@ -40,8 +40,8 @@ async function bootstrap() {
 
   const document = SwaggerModule.createDocument(app, config);
 
-  // ✅ Mount Swagger on the same prefix, so routes match correctly
-  SwaggerModule.setup(globalPrefix, app, document, {
+  // 👇 mount Swagger UI at a DIFFERENT path
+  SwaggerModule.setup("docs", app, document, {
     swaggerOptions: { persistAuthorization: true },
   });
 
