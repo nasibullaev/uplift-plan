@@ -24,7 +24,7 @@ async function bootstrap() {
   // ✅ Set global prefix
   const globalPrefix = "api2";
   app.setGlobalPrefix(globalPrefix, {
-    exclude: ["/"], // optional: root stays open
+    exclude: ["/"], // optional: keep root open
   });
 
   const config = new DocumentBuilder()
@@ -33,22 +33,29 @@ async function bootstrap() {
       "The Uplift Plan Management System API with IELTS Writing Assessment"
     )
     .setVersion("1.0")
-    .addServer(`/${globalPrefix}`, "Base API path") // 👈 relative path
+    .addServer(`/${globalPrefix}`, "Base API path")
     .addBearerAuth(
       { type: "http", scheme: "bearer", bearerFormat: "JWT" },
       "JWT-auth"
     )
     .build();
 
-  const document = SwaggerModule.createDocument(app, config, {
-    deepScanRoutes: true, // 👈 forces scanning with prefix
+  let document = SwaggerModule.createDocument(app, config, {
+    deepScanRoutes: true,
   });
+
+  // 👇 Manually prefix all paths in Swagger with /api2
+  document.paths = Object.fromEntries(
+    Object.entries(document.paths).map(([path, pathObj]) => [
+      `/${globalPrefix}${path}`,
+      pathObj,
+    ])
+  );
 
   SwaggerModule.setup(`${globalPrefix}/docs`, app, document, {
     swaggerOptions: { persistAuthorization: true },
   });
 
   await app.listen(4000);
-  app.setGlobalPrefix(globalPrefix);
 }
 bootstrap();
