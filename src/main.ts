@@ -22,8 +22,7 @@ async function bootstrap() {
     credentials: true,
   });
 
-  // ✅ Add global prefix
-  app.setGlobalPrefix("api");
+  // Global prefix handled by nginx (api2/)
 
   // Global validation pipe
   app.useGlobalPipes(
@@ -61,12 +60,12 @@ async function bootstrap() {
     )
     .build();
   const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup("api", app, document);
+  SwaggerModule.setup("docs", app, document);
 
   const port =
     process.env.PORT || (process.env.NODE_ENV === "production" ? 4000 : 3000);
   await app.listen(port);
   console.log(`Application is running on: http://localhost:${port}`);
-  console.log(`Swagger documentation: http://localhost:${port}/api`);
+  console.log(`Swagger documentation: http://localhost:${port}/docs`);
 }
 bootstrap();
