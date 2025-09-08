@@ -22,7 +22,8 @@ async function bootstrap() {
     credentials: true,
   });
 
-  // Global prefix handled by nginx (api2/)
+  // Set global prefix to match nginx routing
+  app.setGlobalPrefix("api2");
 
   // Global validation pipe
   app.useGlobalPipes(
@@ -40,7 +41,7 @@ async function bootstrap() {
       "The Uplift Plan Management System API with IELTS Writing Assessment"
     )
     .setVersion("1.0")
-    .addServer("https://dead.uz/api2", "Production server")
+    .addServer("https://dead.uz", "Production server")
     .addTag("plans")
     .addTag("user-plans")
     .addTag("ielts-writing")
@@ -70,12 +71,6 @@ async function bootstrap() {
       defaultModelsExpandDepth: -1,
       defaultModelExpandDepth: 3,
       docExpansion: "none",
-      servers: [
-        {
-          url: "https://dead.uz/api2",
-          description: "Production server",
-        },
-      ],
     },
     customSiteTitle: "Uplift Plan API",
   });
