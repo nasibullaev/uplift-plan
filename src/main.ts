@@ -22,8 +22,7 @@ async function bootstrap() {
     credentials: true,
   });
 
-  // ✅ Add global prefix to match nginx routing
-  app.setGlobalPrefix("api2");
+  // Global prefix handled by nginx (nginx preserves /api2/)
 
   // Global validation pipe
   app.useGlobalPipes(
@@ -70,7 +69,7 @@ async function bootstrap() {
       docExpansion: "none",
       servers: [
         {
-          url: "https://dead.uz/api2",
+          url: "https://dead.uz",
           description: "Production server",
         },
       ],
@@ -82,6 +81,6 @@ async function bootstrap() {
     process.env.PORT || (process.env.NODE_ENV === "production" ? 4000 : 3000);
   await app.listen(port);
   console.log(`Application is running on: http://localhost:${port}`);
-  console.log(`Swagger documentation: http://localhost:${port}/api2/docs`);
+  console.log(`Swagger documentation: http://localhost:${port}/docs`);
 }
 bootstrap();
