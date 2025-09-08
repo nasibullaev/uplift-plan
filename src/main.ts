@@ -40,7 +40,7 @@ async function bootstrap() {
       "The Uplift Plan Management System API with IELTS Writing Assessment"
     )
     .setVersion("1.0")
-    .setBasePath("/api2") // Set base path to match nginx routing
+    .setBasePath("/api2/") // Set base path to match nginx routing
     .addServer("https://dead.uz", "Production server")
     .addServer("http://localhost:4000", "Local development")
     .addTag("plans")
