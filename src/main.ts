@@ -40,7 +40,9 @@ async function bootstrap() {
       "The Uplift Plan Management System API with IELTS Writing Assessment"
     )
     .setVersion("1.0")
-    .setBasePath("/") // Set base path to root since nginx handles routing
+    .setBasePath("/api2") // Set base path to match nginx routing
+    .addServer("https://dead.uz", "Production server")
+    .addServer("http://localhost:4000", "Local development")
     .addTag("plans")
     .addTag("user-plans")
     .addTag("ielts-writing")
@@ -66,8 +68,18 @@ async function bootstrap() {
 
   SwaggerModule.setup("docs", app, document, {
     swaggerOptions: {
-      basePath: "/",
+      basePath: "/api2",
       url: "/docs-json",
+      servers: [
+        {
+          url: "https://dead.uz",
+          description: "Production server",
+        },
+        {
+          url: "http://localhost:4000",
+          description: "Local development",
+        },
+      ],
     },
   });
 
