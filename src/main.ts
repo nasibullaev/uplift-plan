@@ -40,6 +40,7 @@ async function bootstrap() {
       "The Uplift Plan Management System API with IELTS Writing Assessment"
     )
     .setVersion("1.0")
+    .setBasePath("/") // Set base path to root since nginx handles routing
     .addTag("plans")
     .addTag("user-plans")
     .addTag("ielts-writing")
@@ -59,8 +60,16 @@ async function bootstrap() {
       "JWT-auth"
     )
     .build();
-  const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup("docs", app, document);
+  const document = SwaggerModule.createDocument(app, config, {
+    operationIdFactory: (controllerKey: string, methodKey: string) => methodKey,
+  });
+
+  SwaggerModule.setup("docs", app, document, {
+    swaggerOptions: {
+      basePath: "/",
+      url: "/docs-json",
+    },
+  });
 
   const port =
     process.env.PORT || (process.env.NODE_ENV === "production" ? 4000 : 3000);
