@@ -20,7 +20,7 @@ async function bootstrap() {
     allowedHeaders: ["Content-Type", "Authorization", "Accept"],
     credentials: true,
   });
-
+  app.setGlobalPrefix("api2");
   const config = new DocumentBuilder()
     .setTitle("Uplift Plan API")
     .setDescription(
