@@ -61,7 +61,7 @@ async function bootstrap() {
     .build();
   const document = SwaggerModule.createDocument(app, config);
 
-  SwaggerModule.setup("docs", app, document, {
+  SwaggerModule.setup("swagger", app, document, {
     swaggerOptions: {
       url: "/docs-json",
       defaultModelsExpandDepth: -1,
@@ -81,6 +81,6 @@ async function bootstrap() {
     process.env.PORT || (process.env.NODE_ENV === "production" ? 4000 : 3000);
   await app.listen(port);
   console.log(`Application is running on: http://localhost:${port}`);
-  console.log(`Swagger documentation: http://localhost:${port}/docs`);
+  console.log(`Swagger documentation: http://localhost:${port}/swagger`);
 }
 bootstrap();
