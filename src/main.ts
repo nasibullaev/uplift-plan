@@ -22,8 +22,7 @@ async function bootstrap() {
     credentials: true,
   });
 
-  // ✅ Add global prefix to match nginx routing
-  app.setGlobalPrefix("api2");
+  // Global prefix handled by nginx (preserves /api2/)
 
   // Global validation pipe
   app.useGlobalPipes(
