@@ -15,14 +15,16 @@ async function bootstrap() {
       "http://127.0.0.1:3000",
       "http://127.0.0.1:4000",
       "http://127.0.0.1:5173",
-      // Add your production domain here
-      // "https://yourdomain.com",
+      process.env.FRONTEND_URL || "http://localhost:5173",
     ],
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "Accept"],
     credentials: true,
   });
+
+  // ✅ Add global prefix
   app.setGlobalPrefix("api");
+
   // Global validation pipe
   app.useGlobalPipes(
     new ValidationPipe({
