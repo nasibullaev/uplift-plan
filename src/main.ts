@@ -31,6 +31,7 @@ async function bootstrap() {
       "The Uplift Plan Management System API with IELTS Writing Assessment"
     )
     .setVersion("1.0")
+    .addServer("/api2") // 👈 this tells Swagger all endpoints start with /api2
     .addBearerAuth(
       { type: "http", scheme: "bearer", bearerFormat: "JWT" },
       "JWT-auth"
