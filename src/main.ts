@@ -31,7 +31,8 @@ async function bootstrap() {
       "The Uplift Plan Management System API with IELTS Writing Assessment"
     )
     .setVersion("1.0")
-    .addServer(`https://dead.uz/${globalPrefix}`) // 👈 full URL for deployed API
+    .addServer("/api2", "Relative to domain") // works for both localhost + prod
+    .addServer("https://dead.uz/api2", "Production") // explicit absolute URL
     .addBearerAuth(
       { type: "http", scheme: "bearer", bearerFormat: "JWT" },
       "JWT-auth"
@@ -42,9 +43,15 @@ async function bootstrap() {
 
   // 👇 mount Swagger UI at a DIFFERENT path
   SwaggerModule.setup(`${globalPrefix}/docs`, app, document, {
-    swaggerOptions: { persistAuthorization: true },
+    swaggerOptions: {
+      persistAuthorization: true,
+      urls: [
+        { url: `/api2-json`, name: "API2" }, // 👈 this points to /api2-json instead of root /json
+      ],
+    },
   });
 
   await app.listen(4000);
+  app.setGlobalPrefix(globalPrefix);
 }
 bootstrap();
