@@ -31,7 +31,7 @@ async function bootstrap() {
       "The Uplift Plan Management System API with IELTS Writing Assessment"
     )
     .setVersion("1.0")
-    .addServer(`/${globalPrefix}`) // ✅ tell Swagger to use /api2
+    .addServer(`https://dead.uz/${globalPrefix}`) // 👈 full URL for deployed API
     .addBearerAuth(
       { type: "http", scheme: "bearer", bearerFormat: "JWT" },
       "JWT-auth"
