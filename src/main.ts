@@ -22,8 +22,8 @@ async function bootstrap() {
     credentials: true,
   });
 
-  // Set global prefix to match nginx routing
-  app.setGlobalPrefix("api2");
+  // ✅ Add global prefix
+  app.setGlobalPrefix("api");
 
   // Global validation pipe
   app.useGlobalPipes(
@@ -41,7 +41,6 @@ async function bootstrap() {
       "The Uplift Plan Management System API with IELTS Writing Assessment"
     )
     .setVersion("1.0")
-    .addServer("https://dead.uz", "Production server")
     .addTag("plans")
     .addTag("user-plans")
     .addTag("ielts-writing")
@@ -61,24 +60,13 @@ async function bootstrap() {
       "JWT-auth"
     )
     .build();
-  const document = SwaggerModule.createDocument(app, config, {
-    operationIdFactory: (controllerKey: string, methodKey: string) => methodKey,
-  });
-
-  SwaggerModule.setup("docs", app, document, {
-    swaggerOptions: {
-      url: "/docs-json",
-      defaultModelsExpandDepth: -1,
-      defaultModelExpandDepth: 3,
-      docExpansion: "none",
-    },
-    customSiteTitle: "Uplift Plan API",
-  });
+  const document = SwaggerModule.createDocument(app, config);
+  SwaggerModule.setup("api", app, document);
 
   const port =
     process.env.PORT || (process.env.NODE_ENV === "production" ? 4000 : 3000);
   await app.listen(port);
   console.log(`Application is running on: http://localhost:${port}`);
-  console.log(`Swagger documentation: http://localhost:${port}/docs`);
+  console.log(`Swagger documentation: http://localhost:${port}/api`);
 }
 bootstrap();
