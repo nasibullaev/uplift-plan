@@ -6,8 +6,22 @@ import { AppModule } from "./app.module";
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // Enable CORS
-  app.enableCors();
+  // Enable CORS with specific origins
+  app.enableCors({
+    origin: [
+      "http://localhost:3000",
+      "http://localhost:4000",
+      "http://localhost:5173",
+      "http://127.0.0.1:3000",
+      "http://127.0.0.1:4000",
+      "http://127.0.0.1:5173",
+      // Add your production domain here
+      // "https://yourdomain.com",
+    ],
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "Accept"],
+    credentials: true,
+  });
 
   // Global validation pipe
   app.useGlobalPipes(
@@ -47,7 +61,7 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup("api", app, document);
 
-  const port = process.env.PORT || 3000;
+  const port = 4000;
   await app.listen(port);
   console.log(`Application is running on: http://localhost:${port}`);
   console.log(`Swagger documentation: http://localhost:${port}/api`);
