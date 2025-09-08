@@ -41,7 +41,7 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, config);
 
   // 👇 mount Swagger UI at a DIFFERENT path
-  SwaggerModule.setup("docs", app, document, {
+  SwaggerModule.setup(`${globalPrefix}/docs`, app, document, {
     swaggerOptions: { persistAuthorization: true },
   });
 
