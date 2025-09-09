@@ -21,7 +21,7 @@ export class GeminiService {
     this.genAI = new GoogleGenerativeAI(this.apiKey);
   }
 
-  async analyzeWritingSubmission(submissionId: string): Promise<void> {
+  async analyzeWritingSubmission(submissionId: string): Promise<any> {
     try {
       // Update status to IN_PROGRESS
       await this.ieltsWritingSubmissionService.updateStatus(
@@ -75,6 +75,17 @@ export class GeminiService {
       this.logger.log(
         `Gemini analysis completed for submission ${submissionId}`
       );
+
+      // Return the analysis data
+      return {
+        submissionId,
+        status: IELTSWritingSubmissionStatus.ANALYZED,
+        analysis: {
+          score: analysis.score,
+          criteriaScores: analysis.criteriaScores,
+          aiFeedback: analysis.aiFeedback,
+        },
+      };
     } catch (error) {
       this.logger.error(`Error analyzing submission ${submissionId}:`, error);
 

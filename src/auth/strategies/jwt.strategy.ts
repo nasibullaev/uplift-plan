@@ -27,7 +27,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       // Return the user data that will be available in req.user
       return {
         sub: payload.sub,
-        email: user.email,
+        phone: user.phone,
         role: user.role,
         userId: payload.sub,
       };

@@ -81,15 +81,6 @@ export class Plan {
 
   @Prop({ default: 0 })
   sortOrder: number;
-
-  @Prop()
-  stripePriceId?: string; // Stripe price ID for payment integration
-
-  @Prop()
-  stripeProductId?: string; // Stripe product ID
-
-  @Prop({ type: Object })
-  metadata?: Record<string, any>;
 }
 
 export const PlanSchema = SchemaFactory.createForClass(Plan);

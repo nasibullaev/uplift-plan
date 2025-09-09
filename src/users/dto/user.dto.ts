@@ -1,40 +1,21 @@
 import {
-  IsEmail,
   IsEnum,
   IsNotEmpty,
   IsOptional,
   IsString,
-  MinLength,
+  IsNumber,
+  Min,
+  Max,
 } from "class-validator";
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
-import { UserRole, UserStatus } from "../schemas/user.schema";
+import { Type } from "class-transformer";
+import { UserRole } from "../schemas/user.schema";
 
 export class CreateUserDto {
-  @ApiProperty({ description: "User email address" })
-  @IsEmail()
-  @IsNotEmpty()
-  readonly email: string;
-
-  @ApiProperty({ description: "User password", minLength: 6 })
+  @ApiProperty({ description: "User phone number" })
   @IsString()
   @IsNotEmpty()
-  @MinLength(6)
-  readonly password: string;
-
-  @ApiProperty({ description: "User first name" })
-  @IsString()
-  @IsNotEmpty()
-  readonly firstName: string;
-
-  @ApiProperty({ description: "User last name" })
-  @IsString()
-  @IsNotEmpty()
-  readonly lastName: string;
-
-  @ApiPropertyOptional({ description: "User phone number" })
-  @IsString()
-  @IsOptional()
-  readonly phone?: string;
+  readonly phone: string;
 
   @ApiPropertyOptional({ description: "User role", enum: UserRole })
   @IsEnum(UserRole)
@@ -47,66 +28,23 @@ export class CreateUserDto {
   readonly avatar?: string;
 }
 
-export class UpdateUserDto {
-  @ApiPropertyOptional({ description: "User email address" })
-  @IsEmail()
-  @IsOptional()
-  readonly email?: string;
-
-  @ApiPropertyOptional({ description: "User first name" })
+export class SendVerificationCodeDto {
+  @ApiProperty({ description: "User phone number" })
   @IsString()
-  @IsOptional()
-  readonly firstName?: string;
-
-  @ApiPropertyOptional({ description: "User last name" })
-  @IsString()
-  @IsOptional()
-  readonly lastName?: string;
-
-  @ApiPropertyOptional({ description: "User phone number" })
-  @IsString()
-  @IsOptional()
-  readonly phone?: string;
-
-  @ApiPropertyOptional({ description: "User role", enum: UserRole })
-  @IsEnum(UserRole)
-  @IsOptional()
-  readonly role?: UserRole;
-
-  @ApiPropertyOptional({ description: "User status", enum: UserStatus })
-  @IsEnum(UserStatus)
-  @IsOptional()
-  readonly status?: UserStatus;
-
-  @ApiPropertyOptional({ description: "User avatar URL" })
-  @IsString()
-  @IsOptional()
-  readonly avatar?: string;
+  @IsNotEmpty()
+  readonly phone: string;
 }
 
-export class ChangePasswordDto {
-  @ApiProperty({ description: "Current password" })
+export class VerifyPhoneDto {
+  @ApiProperty({ description: "User phone number" })
   @IsString()
   @IsNotEmpty()
-  readonly currentPassword: string;
+  readonly phone: string;
 
-  @ApiProperty({ description: "New password", minLength: 6 })
+  @ApiProperty({ description: "Verification code" })
   @IsString()
   @IsNotEmpty()
-  @MinLength(6)
-  readonly newPassword: string;
-}
-
-export class LoginDto {
-  @ApiProperty({ description: "User email address" })
-  @IsEmail()
-  @IsNotEmpty()
-  readonly email: string;
-
-  @ApiProperty({ description: "User password" })
-  @IsString()
-  @IsNotEmpty()
-  readonly password: string;
+  readonly code: string;
 }
 
 export class ObjectIdDto {
@@ -114,4 +52,46 @@ export class ObjectIdDto {
   @IsString()
   @IsNotEmpty()
   readonly id: string;
+}
+
+export class QueryUserDto {
+  @ApiPropertyOptional({ description: "Page number", default: 1 })
+  @Type(() => Number)
+  @IsNumber()
+  @Min(1)
+  @IsOptional()
+  readonly page?: number = 1;
+
+  @ApiPropertyOptional({ description: "Items per page", default: 10 })
+  @Type(() => Number)
+  @IsNumber()
+  @Min(1)
+  @Max(100)
+  @IsOptional()
+  readonly limit?: number = 10;
+
+  @ApiPropertyOptional({ description: "Search term" })
+  @IsString()
+  @IsOptional()
+  readonly search?: string;
+
+  @ApiPropertyOptional({ description: "User role", enum: UserRole })
+  @IsEnum(UserRole)
+  @IsOptional()
+  readonly role?: UserRole;
+
+  @ApiPropertyOptional({ description: "User status" })
+  @IsString()
+  @IsOptional()
+  readonly status?: string;
+
+  @ApiPropertyOptional({ description: "Sort by field", default: "createdAt" })
+  @IsString()
+  @IsOptional()
+  readonly sortBy?: string = "createdAt";
+
+  @ApiPropertyOptional({ description: "Sort order", default: "desc" })
+  @IsString()
+  @IsOptional()
+  readonly sortOrder?: "asc" | "desc" = "desc";
 }

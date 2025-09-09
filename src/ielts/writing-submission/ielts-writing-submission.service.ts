@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from "@nestjs/common";
 import { InjectModel } from "@nestjs/mongoose";
 import { Model } from "mongoose";
 import {
@@ -10,21 +14,45 @@ import {
   UpdateIELTSWritingSubmissionDto,
 } from "./dto/ielts-writing-submission.dto";
 import { ObjectIdType } from "../../types/object-id.type";
+import { UserPlanService } from "../../user-plan/user-plan.service";
 
 @Injectable()
 export class IELTSWritingSubmissionService {
   constructor(
     @InjectModel(IELTSWritingSubmission.name)
-    private ieltsWritingSubmissionModel: Model<IELTSWritingSubmissionDocument>
+    private ieltsWritingSubmissionModel: Model<IELTSWritingSubmissionDocument>,
+    private userPlanService: UserPlanService
   ) {}
 
   async create(
-    createIELTSWritingSubmissionDto: CreateIELTSWritingSubmissionDto
+    createIELTSWritingSubmissionDto: CreateIELTSWritingSubmissionDto,
+    userId: ObjectIdType
   ): Promise<IELTSWritingSubmission> {
+    // Check submission limit before creating
+    const submissionLimit =
+      await this.userPlanService.checkSubmissionLimit(userId);
+
+    if (!submissionLimit.canSubmit) {
+      throw new BadRequestException(
+        `You have reached your submission limit of ${submissionLimit.limit}. You have ${submissionLimit.remainingSubmissions} submissions remaining.`
+      );
+    }
+
+    const submissionData = {
+      ...createIELTSWritingSubmissionDto,
+      user: userId,
+    };
+
     const createdIELTSWritingSubmission = new this.ieltsWritingSubmissionModel(
-      createIELTSWritingSubmissionDto
+      submissionData
     );
-    return createdIELTSWritingSubmission.save();
+
+    const savedSubmission = await createdIELTSWritingSubmission.save();
+
+    // Increment submission count after successful creation
+    await this.userPlanService.incrementSubmissionCount(userId);
+
+    return savedSubmission;
   }
 
   async findAll(): Promise<IELTSWritingSubmission[]> {
@@ -83,5 +111,13 @@ export class IELTSWritingSubmissionService {
       throw new NotFoundException("IELTS Writing submission not found");
     }
     return ieltsWritingSubmission;
+  }
+
+  async checkSubmissionLimit(userId: ObjectIdType): Promise<{
+    canSubmit: boolean;
+    remainingSubmissions: number;
+    limit: number;
+  }> {
+    return this.userPlanService.checkSubmissionLimit(userId);
   }
 }

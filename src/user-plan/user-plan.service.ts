@@ -13,6 +13,7 @@ import {
   SubscriptionType,
   PaymentStatus,
 } from "./schemas/user-plan.schema";
+import { Plan, PlanDocument } from "../plan/schemas/plan.schema";
 import {
   CreateUserPlanDto,
   UpdateUserPlanDto,
@@ -20,6 +21,8 @@ import {
   UserPlanBalanceDto,
   IncrementTrialDto,
   SubscriptionUpdateDto,
+  RequestPlanChangeDto,
+  MockPaymentDto,
 } from "./dto/user-plan.dto";
 import { ObjectIdType } from "../types/object-id.type";
 
@@ -49,7 +52,8 @@ export interface UserPlanAnalytics {
 @Injectable()
 export class UserPlanService {
   constructor(
-    @InjectModel(UserPlan.name) private userPlanModel: Model<UserPlanDocument>
+    @InjectModel(UserPlan.name) private userPlanModel: Model<UserPlanDocument>,
+    @InjectModel(Plan.name) private planModel: Model<PlanDocument>
   ) {}
 
   async create(createUserPlanDto: CreateUserPlanDto): Promise<UserPlan> {
@@ -541,5 +545,192 @@ export class UserPlanService {
         averageSubmissions: 0,
       }
     );
+  }
+
+  async requestPlanChange(
+    userId: ObjectIdType,
+    requestPlanChangeDto: RequestPlanChangeDto
+  ): Promise<any> {
+    // Check if user has an existing plan
+    const existingUserPlan = await this.userPlanModel
+      .findOne({ user: userId })
+      .exec();
+
+    if (!existingUserPlan) {
+      throw new NotFoundException("User plan not found");
+    }
+
+    // For MVP, we'll just return a mock payment URL
+    // In production, this would redirect to Click or Payme
+    return {
+      userPlanId: existingUserPlan._id,
+      targetPlanId: requestPlanChangeDto.planId,
+      reason: requestPlanChangeDto.reason,
+      paymentUrl: `https://mock-payment.com/pay?userPlanId=${existingUserPlan._id}&planId=${requestPlanChangeDto.planId}`,
+      message: "Redirect to payment gateway for plan upgrade",
+    };
+  }
+
+  async processMockPayment(
+    userId: ObjectIdType,
+    mockPaymentDto: MockPaymentDto
+  ): Promise<any> {
+    // Find the target plan
+    const targetPlan = await this.planModel
+      .findById(mockPaymentDto.planId)
+      .exec();
+    if (!targetPlan) {
+      throw new NotFoundException(
+        `Plan with ID ${mockPaymentDto.planId} not found`
+      );
+    }
+
+    // Check if the plan is active
+    if (!targetPlan.isActive) {
+      throw new BadRequestException(`Plan ${targetPlan.title} is not active`);
+    }
+
+    // Find user's current plan, create free plan if doesn't exist
+    let userPlan: UserPlanDocument | null = await this.userPlanModel
+      .findOne({ user: userId })
+      .exec();
+    if (!userPlan) {
+      // Create a free plan for the user first
+      userPlan = await this.createFreePlanForUser(userId);
+    }
+
+    // Check if user is trying to upgrade to the same plan
+    if (userPlan.plan.toString() === targetPlan._id.toString()) {
+      throw new BadRequestException("You are already subscribed to this plan");
+    }
+
+    // Simulate payment processing (90% success rate)
+    const paymentSuccess = Math.random() > 0.1;
+    if (!paymentSuccess) {
+      throw new BadRequestException("Payment failed - please try again");
+    }
+
+    // Update user plan with new plan details
+    userPlan.plan = targetPlan._id.toString();
+    userPlan.paymentStatus = PaymentStatus.COMPLETED;
+    userPlan.totalPaidAmount += targetPlan.price || 0;
+    userPlan.lastPaymentDate = new Date();
+    userPlan.subscriptionType = SubscriptionType.PAID;
+    userPlan.hasPaidPlan = true;
+    userPlan.subscriptionStartDate = new Date();
+    userPlan.subscriptionEndDate = new Date(
+      Date.now() + 30 * 24 * 60 * 60 * 1000
+    ); // 30 days
+    userPlan.nextPaymentDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    userPlan.submissionsLimit =
+      targetPlan.maxSubmissions || userPlan.submissionsLimit;
+    userPlan.features = targetPlan.features || userPlan.features;
+    userPlan.paymentMethodId = mockPaymentDto.paymentMethod;
+
+    await userPlan.save();
+
+    return {
+      userPlanId: userPlan._id,
+      planId: targetPlan._id,
+      planName: targetPlan.title,
+      paymentStatus: PaymentStatus.COMPLETED,
+      paymentMethod: mockPaymentDto.paymentMethod,
+      amount: targetPlan.price || 0,
+      subscriptionEndDate: userPlan.subscriptionEndDate,
+      submissionsLimit: userPlan.submissionsLimit,
+      message: "Payment processed successfully",
+    };
+  }
+
+  async createFreePlanForUser(userId: ObjectIdType): Promise<UserPlanDocument> {
+    // Find the free plan
+    const freePlan = await this.planModel.findOne({ type: "FREE" }).exec();
+
+    if (!freePlan) {
+      throw new NotFoundException("Free plan not found");
+    }
+
+    // Check if user already has a plan
+    const existingUserPlan = await this.userPlanModel
+      .findOne({ user: userId })
+      .exec();
+    if (existingUserPlan) {
+      return existingUserPlan;
+    }
+
+    // Create free plan for user
+    const userPlanData = {
+      user: userId,
+      plan: freePlan._id,
+      status: UserPlanStatus.ACTIVE,
+      subscriptionType: SubscriptionType.FREE,
+      paymentStatus: PaymentStatus.COMPLETED,
+      submissionsLimit: freePlan.maxSubmissions || 5, // Default free plan limit
+      features: freePlan.features || [],
+      isActive: true,
+      subscriptionStartDate: new Date(),
+      subscriptionEndDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // 1 year for free plan
+    };
+
+    const userPlan = new this.userPlanModel(userPlanData);
+    return userPlan.save();
+  }
+
+  async checkSubmissionLimit(userId: ObjectIdType): Promise<{
+    canSubmit: boolean;
+    remainingSubmissions: number;
+    limit: number;
+  }> {
+    const userPlan = await this.userPlanModel.findOne({ user: userId }).exec();
+
+    if (!userPlan) {
+      throw new NotFoundException("User plan not found");
+    }
+
+    // Check if plan is active
+    if (userPlan.status !== UserPlanStatus.ACTIVE || !userPlan.isActive) {
+      return {
+        canSubmit: false,
+        remainingSubmissions: 0,
+        limit: userPlan.submissionsLimit,
+      };
+    }
+
+    // Check if subscription is expired
+    if (
+      userPlan.subscriptionEndDate &&
+      userPlan.subscriptionEndDate < new Date()
+    ) {
+      return {
+        canSubmit: false,
+        remainingSubmissions: 0,
+        limit: userPlan.submissionsLimit,
+      };
+    }
+
+    // Check submission limits
+    const remainingSubmissions = Math.max(
+      0,
+      userPlan.submissionsLimit - userPlan.submissionsUsed
+    );
+    const canSubmit = remainingSubmissions > 0;
+
+    return {
+      canSubmit,
+      remainingSubmissions,
+      limit: userPlan.submissionsLimit,
+    };
+  }
+
+  async incrementSubmissionCount(userId: ObjectIdType): Promise<void> {
+    const userPlan = await this.userPlanModel.findOne({ user: userId }).exec();
+
+    if (!userPlan) {
+      throw new NotFoundException("User plan not found");
+    }
+
+    userPlan.submissionsUsed += 1;
+    userPlan.totalSubmissions += 1;
+    await userPlan.save();
   }
 }

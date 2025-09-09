@@ -8,7 +8,6 @@ import {
   IsString,
   Min,
   Max,
-  IsObject,
 } from "class-validator";
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { Type } from "class-transformer";
@@ -16,11 +15,6 @@ import { CurrencyCode } from "../../types/object-id.type";
 import { PlanType, PlanStatus, PlanBillingCycle } from "../schemas/plan.schema";
 
 export class CreatePlanDto {
-  @ApiPropertyOptional({ description: "Plan icon" })
-  @IsString()
-  @IsOptional()
-  readonly icon?: string;
-
   @ApiProperty({ description: "Plan title" })
   @IsString()
   @IsNotEmpty()
@@ -101,29 +95,9 @@ export class CreatePlanDto {
   @IsNumber()
   @IsOptional()
   readonly sortOrder?: number;
-
-  @ApiPropertyOptional({ description: "Stripe price ID" })
-  @IsString()
-  @IsOptional()
-  readonly stripePriceId?: string;
-
-  @ApiPropertyOptional({ description: "Stripe product ID" })
-  @IsString()
-  @IsOptional()
-  readonly stripeProductId?: string;
-
-  @ApiPropertyOptional({ description: "Additional metadata" })
-  @IsObject()
-  @IsOptional()
-  readonly metadata?: Record<string, any>;
 }
 
 export class UpdatePlanDto {
-  @ApiPropertyOptional({ description: "Plan icon" })
-  @IsString()
-  @IsOptional()
-  readonly icon?: string;
-
   @ApiPropertyOptional({ description: "Plan title" })
   @IsString()
   @IsOptional()
@@ -209,21 +183,6 @@ export class UpdatePlanDto {
   @IsNumber()
   @IsOptional()
   readonly sortOrder?: number;
-
-  @ApiPropertyOptional({ description: "Stripe price ID" })
-  @IsString()
-  @IsOptional()
-  readonly stripePriceId?: string;
-
-  @ApiPropertyOptional({ description: "Stripe product ID" })
-  @IsString()
-  @IsOptional()
-  readonly stripeProductId?: string;
-
-  @ApiPropertyOptional({ description: "Additional metadata" })
-  @IsObject()
-  @IsOptional()
-  readonly metadata?: Record<string, any>;
 }
 
 export class QueryPlanDto {

@@ -10,6 +10,8 @@ import {
   HttpStatus,
   Query,
   UseGuards,
+  UseInterceptors,
+  UploadedFile,
 } from "@nestjs/common";
 import {
   ApiTags,
@@ -17,14 +19,12 @@ import {
   ApiResponse,
   ApiQuery,
   ApiBearerAuth,
+  ApiConsumes,
+  ApiBody,
 } from "@nestjs/swagger";
+import { FileInterceptor } from "@nestjs/platform-express";
 import { PlanService } from "./plan.service";
-import {
-  CreatePlanDto,
-  UpdatePlanDto,
-  QueryPlanDto,
-  ObjectIdDto,
-} from "./dto/plan.dto";
+import { CreatePlanDto, UpdatePlanDto, ObjectIdDto } from "./dto/plan.dto";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { RolesGuard } from "../auth/guards/roles.guard";
 import { Roles } from "../auth/decorators/roles.decorator";
@@ -39,11 +39,92 @@ export class PlanController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
   @ApiBearerAuth("JWT-auth")
-  @ApiOperation({ summary: "Create a new plan (Admin only)" })
+  @UseInterceptors(FileInterceptor("icon"))
+  @ApiConsumes("multipart/form-data")
+  @ApiOperation({ summary: "Create a new plan with icon upload (Admin only)" })
+  @ApiBody({
+    description: "Plan data with optional icon file",
+    type: "multipart/form-data",
+    schema: {
+      type: "object",
+      properties: {
+        icon: {
+          type: "string",
+          format: "binary",
+          description: "SVG icon file (optional)",
+        },
+        title: {
+          type: "string",
+          description: "Plan title",
+        },
+        description: {
+          type: "string",
+          description: "Plan description",
+        },
+        price: {
+          type: "number",
+          description: "Plan price",
+        },
+        currency: {
+          type: "string",
+          enum: ["UZS", "USD", "EUR"],
+          description: "Currency code",
+        },
+        durationInDays: {
+          type: "number",
+          description: "Duration in days",
+        },
+        trialCount: {
+          type: "number",
+          description: "Trial count",
+        },
+        features: {
+          type: "array",
+          items: { type: "string" },
+          description: "Plan features",
+        },
+        billingCycle: {
+          type: "string",
+          enum: ["MONTHLY", "QUARTERLY", "YEARLY", "LIFETIME"],
+          description: "Billing cycle",
+        },
+        type: {
+          type: "string",
+          enum: ["FREE", "TRIAL", "BASIC", "PREMIUM", "ENTERPRISE"],
+          description: "Plan type",
+        },
+        tags: {
+          type: "array",
+          items: { type: "string" },
+          description: "Plan tags",
+        },
+        maxUsers: {
+          type: "number",
+          description: "Maximum users (0 = unlimited)",
+        },
+        maxSubmissions: {
+          type: "number",
+          description: "Maximum submissions per month (0 = unlimited)",
+        },
+        isPopular: {
+          type: "boolean",
+          description: "Is popular plan",
+        },
+        sortOrder: {
+          type: "number",
+          description: "Sort order",
+        },
+      },
+      required: ["title", "price", "features"],
+    },
+  })
   @ApiResponse({ status: 201, description: "Plan created successfully" })
   @ApiResponse({ status: 400, description: "Bad request" })
-  async create(@Body() createPlanDto: CreatePlanDto) {
-    const plan = await this.planService.create(createPlanDto);
+  async create(
+    @Body() createPlanDto: CreatePlanDto,
+    @UploadedFile() iconFile?: any
+  ) {
+    const plan = await this.planService.create(createPlanDto, iconFile);
     return {
       message: "Plan created successfully",
       data: plan,
@@ -51,11 +132,11 @@ export class PlanController {
   }
 
   @Get()
-  @ApiOperation({ summary: "Get all plans with pagination and filtering" })
+  @ApiOperation({ summary: "Get all plans" })
   @ApiResponse({ status: 200, description: "Plans retrieved successfully" })
-  async findAll(@Query() queryDto: QueryPlanDto) {
-    const result = await this.planService.findAll(queryDto);
-    return result;
+  async findAll() {
+    const plans = await this.planService.findAll();
+    return { data: plans };
   }
 
   @Get("active")
@@ -107,14 +188,108 @@ export class PlanController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
   @ApiBearerAuth("JWT-auth")
-  @ApiOperation({ summary: "Update plan (Admin only)" })
+  @UseInterceptors(FileInterceptor("icon"))
+  @ApiConsumes("multipart/form-data")
+  @ApiOperation({
+    summary: "Update plan with optional icon upload (Admin only)",
+  })
+  @ApiBody({
+    description: "Plan update data with optional icon file",
+    type: "multipart/form-data",
+    schema: {
+      type: "object",
+      properties: {
+        icon: {
+          type: "string",
+          format: "binary",
+          description: "SVG icon file (optional)",
+        },
+        title: {
+          type: "string",
+          description: "Plan title",
+        },
+        description: {
+          type: "string",
+          description: "Plan description",
+        },
+        price: {
+          type: "number",
+          description: "Plan price",
+        },
+        currency: {
+          type: "string",
+          enum: ["UZS", "USD", "EUR"],
+          description: "Currency code",
+        },
+        durationInDays: {
+          type: "number",
+          description: "Duration in days",
+        },
+        trialCount: {
+          type: "number",
+          description: "Trial count",
+        },
+        features: {
+          type: "array",
+          items: { type: "string" },
+          description: "Plan features",
+        },
+        isActive: {
+          type: "boolean",
+          description: "Is plan active",
+        },
+        billingCycle: {
+          type: "string",
+          enum: ["MONTHLY", "QUARTERLY", "YEARLY", "LIFETIME"],
+          description: "Billing cycle",
+        },
+        type: {
+          type: "string",
+          enum: ["FREE", "TRIAL", "BASIC", "PREMIUM", "ENTERPRISE"],
+          description: "Plan type",
+        },
+        status: {
+          type: "string",
+          enum: ["ACTIVE", "INACTIVE", "ARCHIVED"],
+          description: "Plan status",
+        },
+        tags: {
+          type: "array",
+          items: { type: "string" },
+          description: "Plan tags",
+        },
+        maxUsers: {
+          type: "number",
+          description: "Maximum users (0 = unlimited)",
+        },
+        maxSubmissions: {
+          type: "number",
+          description: "Maximum submissions per month (0 = unlimited)",
+        },
+        isPopular: {
+          type: "boolean",
+          description: "Is popular plan",
+        },
+        sortOrder: {
+          type: "number",
+          description: "Sort order",
+        },
+      },
+    },
+  })
   @ApiResponse({ status: 200, description: "Plan updated successfully" })
   @ApiResponse({ status: 404, description: "Plan not found" })
+  @ApiResponse({ status: 400, description: "Bad request" })
   async update(
     @Param() params: ObjectIdDto,
-    @Body() updatePlanDto: UpdatePlanDto
+    @Body() updatePlanDto: UpdatePlanDto,
+    @UploadedFile() iconFile?: any
   ) {
-    const plan = await this.planService.update(params.id, updatePlanDto);
+    const plan = await this.planService.update(
+      params.id,
+      updatePlanDto,
+      iconFile
+    );
     return {
       message: "Plan updated successfully",
       data: plan,

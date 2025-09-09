@@ -10,6 +10,7 @@ import {
   Min,
   Max,
   IsObject,
+  IsIn,
 } from "class-validator";
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { Type } from "class-transformer";
@@ -360,4 +361,28 @@ export class ObjectIdDto {
   @IsString()
   @IsNotEmpty()
   readonly id: string;
+}
+
+export class RequestPlanChangeDto {
+  @ApiProperty({ description: "Target plan ID" })
+  @IsString()
+  @IsNotEmpty()
+  readonly planId: string;
+
+  @ApiPropertyOptional({ description: "Reason for plan change" })
+  @IsString()
+  @IsOptional()
+  readonly reason?: string;
+}
+
+export class MockPaymentDto {
+  @ApiProperty({ description: "Target plan ID to upgrade to" })
+  @IsString()
+  @IsNotEmpty()
+  readonly planId: string;
+
+  @ApiProperty({ description: "Payment method", enum: ["Click", "Payme"] })
+  @IsString()
+  @IsIn(["Click", "Payme"])
+  readonly paymentMethod: string;
 }

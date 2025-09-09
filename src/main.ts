@@ -2,9 +2,16 @@ import { NestFactory } from "@nestjs/core";
 import { ValidationPipe } from "@nestjs/common";
 import { SwaggerModule, DocumentBuilder } from "@nestjs/swagger";
 import { AppModule } from "./app.module";
+import { NestExpressApplication } from "@nestjs/platform-express";
+import { join } from "path";
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+
+  // Serve static files
+  app.useStaticAssets(join(__dirname, "..", "uploads"), {
+    prefix: "/uploads/",
+  });
 
   app.enableCors({
     origin: [
@@ -23,10 +30,8 @@ async function bootstrap() {
   });
 
   // ✅ DON'T use global prefix - let nginx handle the routing
-  // const globalPrefix = "api2";
-  // app.setGlobalPrefix(globalPrefix, {
-  //   exclude: ["/"],
-  // });
+  // This way your routes are /auth/register, /docs etc.
+  // Nginx adds /api2 prefix externally
 
   const config = new DocumentBuilder()
     .setTitle("Uplift Plan API")
@@ -34,8 +39,6 @@ async function bootstrap() {
       "The Uplift Plan Management System API with IELTS Writing Assessment"
     )
     .setVersion("1.0")
-    .addServer("https://dead.uz/api2", "Production server")
-    .addServer("http://localhost:4000", "Development server")
     .addBearerAuth(
       { type: "http", scheme: "bearer", bearerFormat: "JWT" },
       "JWT-auth"
@@ -45,8 +48,19 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, config, {
     deepScanRoutes: true,
   });
+  // ✅ Manually set the servers array to tell Swagger the correct base URL
+  document.servers = [
+    {
+      url: "/api2",
+      description: "API base path",
+    },
+    {
+      url: "/",
+      description: "API dev path",
+    },
+  ];
 
-  // ✅ Setup Swagger at /docs (nginx will add /api2 prefix)
+  // ✅ Setup Swagger at /docs
   SwaggerModule.setup("docs", app, document, {
     swaggerOptions: {
       persistAuthorization: true,
@@ -54,8 +68,6 @@ async function bootstrap() {
   });
 
   console.log(`🚀 Server running on http://localhost:4000`);
-  console.log(`📚 Local Swagger docs: http://localhost:4000/docs`);
-  console.log(`📚 Production Swagger: https://dead.uz/api2/docs`);
 
   await app.listen(4000);
 }

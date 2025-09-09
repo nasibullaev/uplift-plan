@@ -3,10 +3,11 @@ import {
   NotFoundException,
   ConflictException,
   UnauthorizedException,
+  Inject,
+  forwardRef,
 } from "@nestjs/common";
 import { InjectModel } from "@nestjs/mongoose";
 import { Model } from "mongoose";
-import * as bcrypt from "bcrypt";
 import { JwtService } from "@nestjs/jwt";
 import {
   User,
@@ -14,65 +15,152 @@ import {
   UserRole,
   UserStatus,
 } from "./schemas/user.schema";
-import {
-  CreateUserDto,
-  UpdateUserDto,
-  ChangePasswordDto,
-  LoginDto,
-} from "./dto/user.dto";
+import { CreateUserDto, QueryUserDto } from "./dto/user.dto";
 import { ObjectIdType } from "../types/object-id.type";
+import { UserPlanService } from "../user-plan/user-plan.service";
+
+export interface PaginatedResult<T> {
+  data: T[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+    hasNext: boolean;
+    hasPrev: boolean;
+  };
+}
 
 @Injectable()
 export class UserService {
   constructor(
     @InjectModel(User.name) private userModel: Model<UserDocument>,
-    private jwtService: JwtService
+    private jwtService: JwtService,
+    @Inject(forwardRef(() => UserPlanService))
+    private userPlanService: UserPlanService
   ) {}
 
   async create(createUserDto: CreateUserDto): Promise<User> {
     // Check if user already exists
     const existingUser = await this.userModel.findOne({
-      email: createUserDto.email,
+      phone: createUserDto.phone,
     });
     if (existingUser) {
-      throw new ConflictException("User with this email already exists");
+      throw new ConflictException("User with this phone number already exists");
     }
 
-    // Hash password
-    const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
+    const createdUser = new this.userModel(createUserDto);
+    const savedUser = await createdUser.save();
 
-    const createdUser = new this.userModel({
-      ...createUserDto,
-      password: hashedPassword,
-    });
+    // Create free plan for new user - TEMPORARILY DISABLED FOR DEBUGGING
+    // try {
+    //   await this.userPlanService.createFreePlanForUser(
+    //     savedUser._id.toString()
+    //   );
+    // } catch (error) {
+    //   console.error("Failed to create free plan for user:", error);
+    //   // Don't throw error here as user creation should succeed even if plan creation fails
+    // }
 
-    return createdUser.save();
+    return savedUser;
   }
 
-  async findAll(): Promise<User[]> {
-    return this.userModel.find().select("-password").exec();
+  async findAll(queryDto: QueryUserDto): Promise<PaginatedResult<User>> {
+    const {
+      page = 1,
+      limit = 10,
+      search,
+      role,
+      status,
+      sortBy = "createdAt",
+      sortOrder = "desc",
+    } = queryDto;
+
+    // Build filter object
+    const filter: any = {};
+
+    if (search) {
+      filter.$or = [{ phone: { $regex: search, $options: "i" } }];
+    }
+
+    if (role) filter.role = role;
+    if (status) filter.status = status;
+
+    // Build sort object
+    const sort: any = {};
+    sort[sortBy] = sortOrder === "asc" ? 1 : -1;
+
+    // Calculate pagination
+    const skip = (page - 1) * limit;
+
+    // Execute queries
+    const [data, total] = await Promise.all([
+      this.userModel
+        .find(filter)
+        .select("-verificationCode -verificationCodeExpires")
+        .sort(sort)
+        .skip(skip)
+        .limit(limit)
+        .exec(),
+      this.userModel.countDocuments(filter).exec(),
+    ]);
+
+    const totalPages = Math.ceil(total / limit);
+
+    return {
+      data,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages,
+        hasNext: page < totalPages,
+        hasPrev: page > 1,
+      },
+    };
   }
 
   async findOne(id: ObjectIdType): Promise<User> {
-    const user = await this.userModel.findById(id).select("-password").exec();
-    if (!user) {
-      throw new NotFoundException("User not found");
-    }
-    return user;
-  }
-
-  async findByEmail(email: string): Promise<User> {
-    const user = await this.userModel.findOne({ email }).exec();
-    if (!user) {
-      throw new NotFoundException("User not found");
-    }
-    return user;
-  }
-
-  async update(id: ObjectIdType, updateUserDto: UpdateUserDto): Promise<User> {
     const user = await this.userModel
-      .findByIdAndUpdate(id, updateUserDto, { new: true })
-      .select("-password")
+      .findById(id)
+      .select("-verificationCode -verificationCodeExpires")
+      .exec();
+    if (!user) {
+      throw new NotFoundException("User not found");
+    }
+    return user;
+  }
+
+  async findByPhone(phone: string): Promise<User> {
+    const user = await this.userModel
+      .findOne({ phone })
+      .select("-verificationCode -verificationCodeExpires")
+      .exec();
+    if (!user) {
+      throw new NotFoundException("User not found");
+    }
+    return user;
+  }
+
+  async findByPhoneWithVerification(phone: string): Promise<User> {
+    const user = await this.userModel.findOne({ phone }).exec();
+    if (!user) {
+      throw new NotFoundException("User not found");
+    }
+    return user;
+  }
+
+  async updateVerificationCode(
+    id: ObjectIdType,
+    updateData: {
+      verificationCode?: string | null;
+      verificationCodeExpires?: Date | null;
+      phoneVerified?: boolean;
+    }
+  ): Promise<User> {
+    const user = await this.userModel
+      .findByIdAndUpdate(id, updateData, { new: true })
+      .select("-verificationCode -verificationCodeExpires")
       .exec();
     if (!user) {
       throw new NotFoundException("User not found");
@@ -81,64 +169,30 @@ export class UserService {
   }
 
   async remove(id: ObjectIdType): Promise<User> {
-    const user = await this.userModel
-      .findByIdAndDelete(id)
-      .select("-password")
-      .exec();
+    const user = await this.userModel.findByIdAndDelete(id).exec();
     if (!user) {
       throw new NotFoundException("User not found");
     }
     return user;
   }
 
-  async changePassword(
-    id: ObjectIdType,
-    changePasswordDto: ChangePasswordDto
-  ): Promise<void> {
-    const user = await this.userModel.findById(id).exec();
-    if (!user) {
-      throw new NotFoundException("User not found");
-    }
-
-    // Verify current password
-    const isCurrentPasswordValid = await bcrypt.compare(
-      changePasswordDto.currentPassword,
-      user.password
-    );
-    if (!isCurrentPasswordValid) {
-      throw new UnauthorizedException("Current password is incorrect");
-    }
-
-    // Hash new password
-    const hashedNewPassword = await bcrypt.hash(
-      changePasswordDto.newPassword,
-      10
-    );
-
-    // Update password
-    await this.userModel
-      .findByIdAndUpdate(id, { password: hashedNewPassword })
-      .exec();
-  }
-
-  async login(
-    loginDto: LoginDto
+  async loginWithPhone(
+    phone: string
   ): Promise<{ user: User; accessToken: string }> {
-    const user = await this.userModel.findOne({ email: loginDto.email }).exec();
+    const user = await this.userModel
+      .findOne({ phone })
+      .select("-verificationCode -verificationCodeExpires")
+      .exec();
     if (!user) {
-      throw new UnauthorizedException("Invalid credentials");
+      throw new UnauthorizedException("User not found");
     }
 
     if (user.status !== UserStatus.ACTIVE) {
       throw new UnauthorizedException("Account is not active");
     }
 
-    const isPasswordValid = await bcrypt.compare(
-      loginDto.password,
-      user.password
-    );
-    if (!isPasswordValid) {
-      throw new UnauthorizedException("Invalid credentials");
+    if (!user.phoneVerified) {
+      throw new UnauthorizedException("Phone number not verified");
     }
 
     // Update last login
@@ -147,29 +201,26 @@ export class UserService {
       .exec();
 
     // Generate JWT token
-    const payload = { sub: user._id, email: user.email, role: user.role };
+    const payload = { sub: user._id, phone: user.phone, role: user.role };
     const accessToken = this.jwtService.sign(payload);
 
-    // Return user without password
-    const userWithoutPassword = await this.userModel
-      .findById(user._id)
-      .select("-password")
-      .exec();
-
     return {
-      user: userWithoutPassword,
+      user,
       accessToken,
     };
   }
 
   async getUsersByRole(role: UserRole): Promise<User[]> {
-    return this.userModel.find({ role }).select("-password").exec();
+    return this.userModel
+      .find({ role })
+      .select("-verificationCode -verificationCodeExpires")
+      .exec();
   }
 
   async updateUserStatus(id: ObjectIdType, status: UserStatus): Promise<User> {
     const user = await this.userModel
       .findByIdAndUpdate(id, { status }, { new: true })
-      .select("-password")
+      .select("-verificationCode -verificationCodeExpires")
       .exec();
     if (!user) {
       throw new NotFoundException("User not found");

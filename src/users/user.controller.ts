@@ -1,23 +1,24 @@
 import {
   Controller,
   Get,
-  Body,
-  Patch,
+  Post,
   Param,
   Delete,
   HttpCode,
   HttpStatus,
   UseGuards,
   Request,
+  Query,
 } from "@nestjs/common";
 import {
   ApiTags,
   ApiOperation,
   ApiResponse,
   ApiBearerAuth,
+  ApiQuery,
 } from "@nestjs/swagger";
 import { UserService } from "./user.service";
-import { UpdateUserDto, ChangePasswordDto, ObjectIdDto } from "./dto/user.dto";
+import { ObjectIdDto, QueryUserDto } from "./dto/user.dto";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { RolesGuard } from "../auth/guards/roles.guard";
 import { Roles } from "../auth/decorators/roles.decorator";
@@ -32,11 +33,11 @@ export class UserController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
   @ApiBearerAuth("JWT-auth")
-  @ApiOperation({ summary: "Get all users (Admin only)" })
+  @ApiOperation({ summary: "Get all users with pagination (Admin only)" })
   @ApiResponse({ status: 200, description: "Users retrieved successfully" })
-  async findAll() {
-    const users = await this.userService.findAll();
-    return { data: users };
+  async findAll(@Query() queryDto: QueryUserDto) {
+    const result = await this.userService.findAll(queryDto);
+    return result;
   }
 
   @Get("profile")
@@ -59,53 +60,6 @@ export class UserController {
   async findOne(@Param() params: ObjectIdDto) {
     const user = await this.userService.findOne(params.id);
     return { data: user };
-  }
-
-  @Patch("profile")
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth("JWT-auth")
-  @ApiOperation({ summary: "Update current user profile" })
-  @ApiResponse({ status: 200, description: "Profile updated successfully" })
-  async updateProfile(@Request() req, @Body() updateUserDto: UpdateUserDto) {
-    const user = await this.userService.update(req.user.sub, updateUserDto);
-    return {
-      message: "Profile updated successfully",
-      data: user,
-    };
-  }
-
-  @Patch(":id")
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
-  @ApiBearerAuth("JWT-auth")
-  @ApiOperation({ summary: "Update user (Admin only)" })
-  @ApiResponse({ status: 200, description: "User updated successfully" })
-  @ApiResponse({ status: 404, description: "User not found" })
-  async update(
-    @Param() params: ObjectIdDto,
-    @Body() updateUserDto: UpdateUserDto
-  ) {
-    const user = await this.userService.update(params.id, updateUserDto);
-    return {
-      message: "User updated successfully",
-      data: user,
-    };
-  }
-
-  @Patch("change-password")
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth("JWT-auth")
-  @ApiOperation({ summary: "Change user password" })
-  @ApiResponse({ status: 200, description: "Password changed successfully" })
-  @ApiResponse({ status: 401, description: "Current password is incorrect" })
-  async changePassword(
-    @Request() req,
-    @Body() changePasswordDto: ChangePasswordDto
-  ) {
-    await this.userService.changePassword(req.user.sub, changePasswordDto);
-    return {
-      message: "Password changed successfully",
-    };
   }
 
   @Delete(":id")

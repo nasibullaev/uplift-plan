@@ -1,103 +1,71 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from "@nestjs/common";
 import { InjectModel } from "@nestjs/mongoose";
 import { Model } from "mongoose";
 import { Plan, PlanDocument } from "./schemas/plan.schema";
-import { CreatePlanDto, UpdatePlanDto, QueryPlanDto } from "./dto/plan.dto";
+import { CreatePlanDto, UpdatePlanDto } from "./dto/plan.dto";
 import { ObjectIdType } from "../types/object-id.type";
-
-export interface PaginatedResult<T> {
-  data: T[];
-  pagination: {
-    page: number;
-    limit: number;
-    total: number;
-    totalPages: number;
-    hasNext: boolean;
-    hasPrev: boolean;
-  };
-}
+import * as fs from "fs";
+import * as path from "path";
 
 @Injectable()
 export class PlanService {
   constructor(@InjectModel(Plan.name) private planModel: Model<PlanDocument>) {}
 
-  async create(createPlanDto: CreatePlanDto): Promise<Plan> {
-    const createdPlan = new this.planModel(createPlanDto);
+  async create(createPlanDto: CreatePlanDto, iconFile?: any): Promise<Plan> {
+    let iconPath: string | undefined;
+
+    // Handle icon upload if provided
+    if (iconFile) {
+      iconPath = await this.uploadIcon(iconFile);
+    }
+
+    // Create plan with icon path
+    const planData = {
+      ...createPlanDto,
+      icon: iconPath,
+    };
+
+    const createdPlan = new this.planModel(planData);
     return createdPlan.save();
   }
 
-  async findAll(queryDto: QueryPlanDto): Promise<PaginatedResult<Plan>> {
-    const {
-      page = 1,
-      limit = 10,
-      search,
-      type,
-      status,
-      billingCycle,
-      currency,
-      minPrice,
-      maxPrice,
-      isActive,
-      isPopular,
-      sortBy = "sortOrder",
-      sortOrder = "asc",
-      tags,
-    } = queryDto;
-
-    // Build filter object
-    const filter: any = {};
-
-    if (search) {
-      filter.$or = [
-        { title: { $regex: search, $options: "i" } },
-        { description: { $regex: search, $options: "i" } },
-        { features: { $regex: search, $options: "i" } },
-      ];
+  async uploadIcon(file: any): Promise<string> {
+    if (!file) {
+      throw new BadRequestException("No file uploaded");
     }
 
-    if (type) filter.type = type;
-    if (status) filter.status = status;
-    if (billingCycle) filter.billingCycle = billingCycle;
-    if (currency) filter.currency = currency;
-    if (isActive !== undefined) filter.isActive = isActive;
-    if (isPopular !== undefined) filter.isPopular = isPopular;
-
-    if (minPrice !== undefined || maxPrice !== undefined) {
-      filter.price = {};
-      if (minPrice !== undefined) filter.price.$gte = minPrice;
-      if (maxPrice !== undefined) filter.price.$lte = maxPrice;
+    // Check if file is SVG
+    if (
+      file.mimetype !== "image/svg+xml" &&
+      !file.originalname.toLowerCase().endsWith(".svg")
+    ) {
+      throw new BadRequestException("Only SVG files are allowed");
     }
 
-    if (tags && tags.length > 0) {
-      filter.tags = { $in: tags };
+    // Create uploads directory if it doesn't exist
+    const uploadsDir = path.join(process.cwd(), "uploads", "icons");
+    if (!fs.existsSync(uploadsDir)) {
+      fs.mkdirSync(uploadsDir, { recursive: true });
     }
 
-    // Build sort object
-    const sort: any = {};
-    sort[sortBy] = sortOrder === "desc" ? -1 : 1;
+    // Generate unique filename
+    const timestamp = Date.now();
+    const filename = `plan-icon-${timestamp}.svg`;
+    const filePath = path.join(uploadsDir, filename);
 
-    // Calculate pagination
-    const skip = (page - 1) * limit;
+    // Save file
+    fs.writeFileSync(filePath, file.buffer);
 
-    // Execute queries
-    const [data, total] = await Promise.all([
-      this.planModel.find(filter).sort(sort).skip(skip).limit(limit).exec(),
-      this.planModel.countDocuments(filter).exec(),
-    ]);
+    // Return relative path for API
+    return `/uploads/icons/${filename}`;
+  }
 
-    const totalPages = Math.ceil(total / limit);
-
-    return {
-      data,
-      pagination: {
-        page,
-        limit,
-        total,
-        totalPages,
-        hasNext: page < totalPages,
-        hasPrev: page > 1,
-      },
-    };
+  async findAll(): Promise<Plan[]> {
+    return this.planModel.find().sort({ sortOrder: 1 }).exec();
   }
 
   async findOne(id: ObjectIdType): Promise<Plan> {
@@ -108,9 +76,21 @@ export class PlanService {
     return plan;
   }
 
-  async update(id: ObjectIdType, updatePlanDto: UpdatePlanDto): Promise<Plan> {
+  async update(
+    id: ObjectIdType,
+    updatePlanDto: UpdatePlanDto,
+    iconFile?: any
+  ): Promise<Plan> {
+    let updateData: any = { ...updatePlanDto };
+
+    // Handle icon upload if provided
+    if (iconFile) {
+      const iconPath = await this.uploadIcon(iconFile);
+      updateData.icon = iconPath;
+    }
+
     const plan = await this.planModel
-      .findByIdAndUpdate(id, updatePlanDto, { new: true })
+      .findByIdAndUpdate(id, updateData, { new: true })
       .exec();
     if (!plan) {
       throw new NotFoundException("Plan not found");
