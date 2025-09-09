@@ -24,7 +24,13 @@ import {
 } from "@nestjs/swagger";
 import { FileInterceptor } from "@nestjs/platform-express";
 import { PlanService } from "./plan.service";
-import { CreatePlanDto, UpdatePlanDto, ObjectIdDto } from "./dto/plan.dto";
+import {
+  CreatePlanDto,
+  UpdatePlanDto,
+  ObjectIdDto,
+  CreatePlanWithFileDto,
+  UpdatePlanWithFileDto,
+} from "./dto/plan.dto";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { RolesGuard } from "../auth/guards/roles.guard";
 import { Roles } from "../auth/decorators/roles.decorator";
@@ -44,79 +50,7 @@ export class PlanController {
   @ApiOperation({ summary: "Create a new plan with icon upload (Admin only)" })
   @ApiBody({
     description: "Plan data with optional icon file",
-    type: "multipart/form-data",
-    schema: {
-      type: "object",
-      properties: {
-        icon: {
-          type: "string",
-          format: "binary",
-          description: "SVG icon file (optional)",
-        },
-        title: {
-          type: "string",
-          description: "Plan title",
-        },
-        description: {
-          type: "string",
-          description: "Plan description",
-        },
-        price: {
-          type: "number",
-          description: "Plan price",
-        },
-        currency: {
-          type: "string",
-          enum: ["UZS", "USD", "EUR"],
-          description: "Currency code",
-        },
-        durationInDays: {
-          type: "number",
-          description: "Duration in days",
-        },
-        trialCount: {
-          type: "number",
-          description: "Trial count",
-        },
-        features: {
-          type: "array",
-          items: { type: "string" },
-          description: "Plan features",
-        },
-        billingCycle: {
-          type: "string",
-          enum: ["MONTHLY", "QUARTERLY", "YEARLY", "LIFETIME"],
-          description: "Billing cycle",
-        },
-        type: {
-          type: "string",
-          enum: ["FREE", "TRIAL", "BASIC", "PREMIUM", "ENTERPRISE"],
-          description: "Plan type",
-        },
-        tags: {
-          type: "array",
-          items: { type: "string" },
-          description: "Plan tags",
-        },
-        maxUsers: {
-          type: "number",
-          description: "Maximum users (0 = unlimited)",
-        },
-        maxSubmissions: {
-          type: "number",
-          description: "Maximum submissions per month (0 = unlimited)",
-        },
-        isPopular: {
-          type: "boolean",
-          description: "Is popular plan",
-        },
-        sortOrder: {
-          type: "number",
-          description: "Sort order",
-        },
-      },
-      required: ["title", "price", "features"],
-    },
+    type: CreatePlanWithFileDto,
   })
   @ApiResponse({ status: 201, description: "Plan created successfully" })
   @ApiResponse({ status: 400, description: "Bad request" })
@@ -195,87 +129,7 @@ export class PlanController {
   })
   @ApiBody({
     description: "Plan update data with optional icon file",
-    type: "multipart/form-data",
-    schema: {
-      type: "object",
-      properties: {
-        icon: {
-          type: "string",
-          format: "binary",
-          description: "SVG icon file (optional)",
-        },
-        title: {
-          type: "string",
-          description: "Plan title",
-        },
-        description: {
-          type: "string",
-          description: "Plan description",
-        },
-        price: {
-          type: "number",
-          description: "Plan price",
-        },
-        currency: {
-          type: "string",
-          enum: ["UZS", "USD", "EUR"],
-          description: "Currency code",
-        },
-        durationInDays: {
-          type: "number",
-          description: "Duration in days",
-        },
-        trialCount: {
-          type: "number",
-          description: "Trial count",
-        },
-        features: {
-          type: "array",
-          items: { type: "string" },
-          description: "Plan features",
-        },
-        isActive: {
-          type: "boolean",
-          description: "Is plan active",
-        },
-        billingCycle: {
-          type: "string",
-          enum: ["MONTHLY", "QUARTERLY", "YEARLY", "LIFETIME"],
-          description: "Billing cycle",
-        },
-        type: {
-          type: "string",
-          enum: ["FREE", "TRIAL", "BASIC", "PREMIUM", "ENTERPRISE"],
-          description: "Plan type",
-        },
-        status: {
-          type: "string",
-          enum: ["ACTIVE", "INACTIVE", "ARCHIVED"],
-          description: "Plan status",
-        },
-        tags: {
-          type: "array",
-          items: { type: "string" },
-          description: "Plan tags",
-        },
-        maxUsers: {
-          type: "number",
-          description: "Maximum users (0 = unlimited)",
-        },
-        maxSubmissions: {
-          type: "number",
-          description: "Maximum submissions per month (0 = unlimited)",
-        },
-        isPopular: {
-          type: "boolean",
-          description: "Is popular plan",
-        },
-        sortOrder: {
-          type: "number",
-          description: "Sort order",
-        },
-      },
-    },
+    type: UpdatePlanWithFileDto,
   })
   @ApiResponse({ status: 200, description: "Plan updated successfully" })
   @ApiResponse({ status: 404, description: "Plan not found" })

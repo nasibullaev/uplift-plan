@@ -269,6 +269,26 @@ export class QueryPlanDto {
   readonly tags?: string[];
 }
 
+export class CreatePlanWithFileDto extends CreatePlanDto {
+  @ApiPropertyOptional({
+    type: "string",
+    format: "binary",
+    description: "SVG icon file (optional)",
+  })
+  @IsOptional()
+  readonly icon?: any;
+}
+
+export class UpdatePlanWithFileDto extends UpdatePlanDto {
+  @ApiPropertyOptional({
+    type: "string",
+    format: "binary",
+    description: "SVG icon file (optional)",
+  })
+  @IsOptional()
+  readonly icon?: any;
+}
+
 export class ObjectIdDto {
   @ApiProperty({ description: "Object ID" })
   @IsString()
