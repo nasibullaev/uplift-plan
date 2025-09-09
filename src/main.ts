@@ -52,7 +52,14 @@ async function bootstrap() {
       persistAuthorization: true,
     },
   });
-
+  if (process.env.NODE_ENV === "production") {
+    document.servers = [
+      {
+        url: "https://dead.uz/api2",
+        description: "Production server",
+      },
+    ];
+  }
   await app.listen(4000);
 }
 bootstrap();
