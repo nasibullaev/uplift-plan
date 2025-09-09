@@ -15,7 +15,7 @@ async function bootstrap() {
       "http://127.0.0.1:4000",
       "http://127.0.0.1:5173",
       process.env.FRONTEND_URL || "http://localhost:5173",
-      "https://dead.uz", // ✅ Add your domain
+      "https://dead.uz",
     ],
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "Accept"],
@@ -34,32 +34,40 @@ async function bootstrap() {
       "The Uplift Plan Management System API with IELTS Writing Assessment"
     )
     .setVersion("1.0")
-    // ✅ Add servers with full URLs
-    .addServer("https://dead.uz", "Production")
-    .addServer("http://localhost:4000", "Development")
     .addBearerAuth(
       { type: "http", scheme: "bearer", bearerFormat: "JWT" },
       "JWT-auth"
     )
     .build();
 
-  const document = SwaggerModule.createDocument(app, config, {
+  let document = SwaggerModule.createDocument(app, config, {
     deepScanRoutes: true,
   });
+
+  // ✅ Always set the server URL to include /api2 prefix
+  document.servers = [
+    {
+      url: "https://dead.uz/api2",
+      description: "Production server",
+    },
+    {
+      url: "http://localhost:4000/api2",
+      description: "Development server",
+    },
+  ];
 
   SwaggerModule.setup(`${globalPrefix}/docs`, app, document, {
     swaggerOptions: {
       persistAuthorization: true,
     },
   });
-  if (process.env.NODE_ENV === "production") {
-    document.servers = [
-      {
-        url: "https://dead.uz/api2",
-        description: "Production server",
-      },
-    ];
-  }
+
+  console.log(`🚀 Server running on http://localhost:4000`);
+  console.log(
+    `📚 Swagger docs available at http://localhost:4000/${globalPrefix}/docs`
+  );
+  console.log(`📚 Production Swagger: https://dead.uz/${globalPrefix}/docs`);
+
   await app.listen(4000);
 }
 bootstrap();
