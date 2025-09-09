@@ -15,16 +15,18 @@ async function bootstrap() {
       "http://127.0.0.1:4000",
       "http://127.0.0.1:5173",
       process.env.FRONTEND_URL || "http://localhost:5173",
+      "https://dead.uz", // ✅ Add your domain
     ],
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "Accept"],
     credentials: true,
   });
 
-  // ✅ Remove global prefix - let nginx handle the /api2 routing
-  // app.setGlobalPrefix(globalPrefix, {
-  //   exclude: ["/"],
-  // });
+  // ✅ Set global prefix
+  const globalPrefix = "api2";
+  app.setGlobalPrefix(globalPrefix, {
+    exclude: ["/"], // optional: keep root open
+  });
 
   const config = new DocumentBuilder()
     .setTitle("Uplift Plan API")
@@ -32,9 +34,9 @@ async function bootstrap() {
       "The Uplift Plan Management System API with IELTS Writing Assessment"
     )
     .setVersion("1.0")
-    // ✅ Set the server URL to match your domain
-    .addServer("https://dead.uz/api2", "Production API")
-    .addServer("http://localhost:4000", "Development API")
+    // ✅ Add servers with full URLs
+    .addServer("https://dead.uz", "Production")
+    .addServer("http://localhost:4000", "Development")
     .addBearerAuth(
       { type: "http", scheme: "bearer", bearerFormat: "JWT" },
       "JWT-auth"
@@ -45,7 +47,7 @@ async function bootstrap() {
     deepScanRoutes: true,
   });
 
-  SwaggerModule.setup("docs", app, document, {
+  SwaggerModule.setup(`${globalPrefix}/docs`, app, document, {
     swaggerOptions: {
       persistAuthorization: true,
     },
