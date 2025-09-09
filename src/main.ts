@@ -44,16 +44,25 @@ async function bootstrap() {
     deepScanRoutes: true,
   });
 
-  // 👇 Manually prefix all paths in Swagger with /api2
-  document.paths = Object.fromEntries(
-    Object.entries(document.paths).map(([path, pathObj]) => [
-      `/${globalPrefix}${path}`,
-      pathObj,
-    ])
-  );
+  // 👇 Remove this manual path prefixing - it's not needed and causes issues
+  // document.paths = Object.fromEntries(
+  //   Object.entries(document.paths).map(([path, pathObj]) => [
+  //     `/${globalPrefix}${path}`,
+  //     pathObj,
+  //   ])
+  // );
 
   SwaggerModule.setup(`${globalPrefix}/docs`, app, document, {
-    swaggerOptions: { persistAuthorization: true },
+    swaggerOptions: {
+      persistAuthorization: true,
+      // ✅ This ensures Swagger UI uses the correct base URL for requests
+      urls: [
+        {
+          url: `/${globalPrefix}/docs-json`,
+          name: "API Documentation",
+        },
+      ],
+    },
   });
 
   await app.listen(4000);
