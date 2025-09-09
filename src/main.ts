@@ -21,11 +21,10 @@ async function bootstrap() {
     credentials: true,
   });
 
-  // ✅ Set global prefix
-  const globalPrefix = "api2";
-  app.setGlobalPrefix(globalPrefix, {
-    exclude: ["/"], // optional: keep root open
-  });
+  // ✅ Remove global prefix - let nginx handle the /api2 routing
+  // app.setGlobalPrefix(globalPrefix, {
+  //   exclude: ["/"],
+  // });
 
   const config = new DocumentBuilder()
     .setTitle("Uplift Plan API")
@@ -33,35 +32,22 @@ async function bootstrap() {
       "The Uplift Plan Management System API with IELTS Writing Assessment"
     )
     .setVersion("1.0")
-    .addServer(`/${globalPrefix}`, "Base API path")
+    // ✅ Set the server URL to match your domain
+    .addServer("https://dead.uz/api2", "Production API")
+    .addServer("http://localhost:4000", "Development API")
     .addBearerAuth(
       { type: "http", scheme: "bearer", bearerFormat: "JWT" },
       "JWT-auth"
     )
     .build();
 
-  let document = SwaggerModule.createDocument(app, config, {
+  const document = SwaggerModule.createDocument(app, config, {
     deepScanRoutes: true,
   });
 
-  // 👇 Remove this manual path prefixing - it's not needed and causes issues
-  // document.paths = Object.fromEntries(
-  //   Object.entries(document.paths).map(([path, pathObj]) => [
-  //     `/${globalPrefix}${path}`,
-  //     pathObj,
-  //   ])
-  // );
-
-  SwaggerModule.setup(`${globalPrefix}/docs`, app, document, {
+  SwaggerModule.setup("docs", app, document, {
     swaggerOptions: {
       persistAuthorization: true,
-      // ✅ This ensures Swagger UI uses the correct base URL for requests
-      urls: [
-        {
-          url: `/${globalPrefix}/docs-json`,
-          name: "API Documentation",
-        },
-      ],
     },
   });
 
