@@ -15,6 +15,11 @@ import {
 } from "./schemas/user-plan.schema";
 import { Plan, PlanDocument } from "../plan/schemas/plan.schema";
 import {
+  IELTSWritingSubmission,
+  IELTSWritingSubmissionDocument,
+} from "../ielts/writing-submission/schemas/ielts-writing-submission.schema";
+import { User, UserDocument } from "../users/schemas/user.schema";
+import {
   CreateUserPlanDto,
   UpdateUserPlanDto,
   QueryUserPlanDto,
@@ -47,13 +52,39 @@ export interface UserPlanAnalytics {
   subscriptionTypes: { type: string; count: number }[];
   paymentStatuses: { status: string; count: number }[];
   monthlyGrowth: { month: string; count: number; revenue: number }[];
+
+  // New analytics fields
+  activeUsers: {
+    daily: number;
+    weekly: number;
+    monthly: number;
+  };
+  transactions: {
+    total: number;
+    dailyRevenue: number;
+    weeklyRevenue: number;
+    monthlyRevenue: number;
+  };
+  writingSubmissions: {
+    total: number;
+    daily: number;
+    weekly: number;
+    monthly: number;
+    timeline: { date: string; count: number }[];
+    statusBreakdown: { status: string; count: number }[];
+    topicBreakdown: { topic: string; count: number }[];
+    scoreDistribution: { scoreRange: string; count: number }[];
+  };
 }
 
 @Injectable()
 export class UserPlanService {
   constructor(
     @InjectModel(UserPlan.name) private userPlanModel: Model<UserPlanDocument>,
-    @InjectModel(Plan.name) private planModel: Model<PlanDocument>
+    @InjectModel(Plan.name) private planModel: Model<PlanDocument>,
+    @InjectModel(IELTSWritingSubmission.name)
+    private ieltsWritingSubmissionModel: Model<IELTSWritingSubmissionDocument>,
+    @InjectModel(User.name) private userModel: Model<UserDocument>
   ) {}
 
   async create(createUserPlanDto: CreateUserPlanDto): Promise<UserPlan> {
@@ -437,6 +468,11 @@ export class UserPlanService {
   }
 
   async getUserPlanAnalytics(): Promise<UserPlanAnalytics> {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const monthAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
+
     const [
       totalUsers,
       activeSubscriptions,
@@ -445,7 +481,26 @@ export class UserPlanService {
       subscriptionTypeStats,
       paymentStatusStats,
       monthlyGrowth,
+      // Active users analytics
+      dailyActiveUsers,
+      weeklyActiveUsers,
+      monthlyActiveUsers,
+      // Transaction analytics
+      totalTransactions,
+      dailyRevenue,
+      weeklyRevenue,
+      monthlyRevenue,
+      // Writing submissions analytics
+      totalSubmissions,
+      dailySubmissions,
+      weeklySubmissions,
+      monthlySubmissions,
+      submissionTimeline,
+      submissionStatusBreakdown,
+      submissionTopicBreakdown,
+      submissionScoreDistribution,
     ] = await Promise.all([
+      // Basic user plan stats
       this.userPlanModel.countDocuments().exec(),
       this.userPlanModel
         .countDocuments({ status: UserPlanStatus.ACTIVE })
@@ -488,12 +543,140 @@ export class UserPlanService {
           { $limit: 12 },
         ])
         .exec(),
+
+      // Active users analytics
+      this.userModel
+        .countDocuments({
+          status: "ACTIVE",
+          lastLoginAt: { $gte: today },
+        })
+        .exec(),
+      this.userModel
+        .countDocuments({
+          status: "ACTIVE",
+          lastLoginAt: { $gte: weekAgo },
+        })
+        .exec(),
+      this.userModel
+        .countDocuments({
+          status: "ACTIVE",
+          lastLoginAt: { $gte: monthAgo },
+        })
+        .exec(),
+
+      // Transaction analytics
+      this.userPlanModel
+        .countDocuments({
+          paymentStatus: PaymentStatus.COMPLETED,
+          totalPaidAmount: { $gt: 0 },
+        })
+        .exec(),
+      this.userPlanModel
+        .aggregate([
+          {
+            $match: {
+              paymentStatus: PaymentStatus.COMPLETED,
+              lastPaymentDate: { $gte: today },
+            },
+          },
+          {
+            $group: {
+              _id: null,
+              total: { $sum: "$totalPaidAmount" },
+            },
+          },
+        ])
+        .exec(),
+      this.userPlanModel
+        .aggregate([
+          {
+            $match: {
+              paymentStatus: PaymentStatus.COMPLETED,
+              lastPaymentDate: { $gte: weekAgo },
+            },
+          },
+          {
+            $group: {
+              _id: null,
+              total: { $sum: "$totalPaidAmount" },
+            },
+          },
+        ])
+        .exec(),
+      this.userPlanModel
+        .aggregate([
+          {
+            $match: {
+              paymentStatus: PaymentStatus.COMPLETED,
+              lastPaymentDate: { $gte: monthAgo },
+            },
+          },
+          {
+            $group: {
+              _id: null,
+              total: { $sum: "$totalPaidAmount" },
+            },
+          },
+        ])
+        .exec(),
+
+      // Writing submissions analytics
+      this.ieltsWritingSubmissionModel.countDocuments().exec(),
+      this.ieltsWritingSubmissionModel
+        .countDocuments({ createdAt: { $gte: today } })
+        .exec(),
+      this.ieltsWritingSubmissionModel
+        .countDocuments({ createdAt: { $gte: weekAgo } })
+        .exec(),
+      this.ieltsWritingSubmissionModel
+        .countDocuments({ createdAt: { $gte: monthAgo } })
+        .exec(),
+      this.ieltsWritingSubmissionModel
+        .aggregate([
+          {
+            $group: {
+              _id: {
+                year: { $year: "$createdAt" },
+                month: { $month: "$createdAt" },
+                day: { $dayOfMonth: "$createdAt" },
+              },
+              count: { $sum: 1 },
+            },
+          },
+          { $sort: { "_id.year": 1, "_id.month": 1, "_id.day": 1 } },
+          { $limit: 30 },
+        ])
+        .exec(),
+      this.ieltsWritingSubmissionModel
+        .aggregate([{ $group: { _id: "$status", count: { $sum: 1 } } }])
+        .exec(),
+      this.ieltsWritingSubmissionModel
+        .aggregate([{ $group: { _id: "$topic", count: { $sum: 1 } } }])
+        .exec(),
+      this.ieltsWritingSubmissionModel
+        .aggregate([
+          {
+            $bucket: {
+              groupBy: "$score",
+              boundaries: [0, 4, 5, 6, 7, 8, 9, 10],
+              default: "No Score",
+              output: {
+                count: { $sum: 1 },
+              },
+            },
+          },
+        ])
+        .exec(),
     ]);
 
     const revenueData = revenueStats[0] || {
       totalRevenue: 0,
       averageRevenue: 0,
     };
+
+    const dailyRevenueData = dailyRevenue[0] || { total: 0 };
+    const weeklyRevenueData = weeklyRevenue[0] || { total: 0 };
+    const monthlyRevenueData = monthlyRevenue[0] || { total: 0 };
 
     return {
       totalUsers,
@@ -514,6 +697,41 @@ export class UserPlanService {
         count: stat.count,
         revenue: stat.revenue,
       })),
+
+      // New analytics
+      activeUsers: {
+        daily: dailyActiveUsers,
+        weekly: weeklyActiveUsers,
+        monthly: monthlyActiveUsers,
+      },
+      transactions: {
+        total: totalTransactions,
+        dailyRevenue: dailyRevenueData.total,
+        weeklyRevenue: weeklyRevenueData.total,
+        monthlyRevenue: monthlyRevenueData.total,
+      },
+      writingSubmissions: {
+        total: totalSubmissions,
+        daily: dailySubmissions,
+        weekly: weeklySubmissions,
+        monthly: monthlySubmissions,
+        timeline: submissionTimeline.map((stat) => ({
+          date: `${stat._id.year}-${stat._id.month.toString().padStart(2, "0")}-${stat._id.day.toString().padStart(2, "0")}`,
+          count: stat.count,
+        })),
+        statusBreakdown: submissionStatusBreakdown.map((stat) => ({
+          status: stat._id,
+          count: stat.count,
+        })),
+        topicBreakdown: submissionTopicBreakdown.map((stat) => ({
+          topic: stat._id,
+          count: stat.count,
+        })),
+        scoreDistribution: submissionScoreDistribution.map((stat) => ({
+          scoreRange: stat._id,
+          count: stat.count,
+        })),
+      },
     };
   }
 

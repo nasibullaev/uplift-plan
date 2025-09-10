@@ -201,4 +201,20 @@ export class PlanService {
     // This would typically interact with user plan service
     // await this.userPlanService.incBalance(userId, plan.trialCount);
   }
+
+  async findFreePlan(): Promise<Plan> {
+    const freePlan = await this.planModel
+      .findOne({
+        type: "FREE",
+        isActive: true,
+        status: "ACTIVE",
+      })
+      .exec();
+
+    if (!freePlan) {
+      throw new Error("No active free plan found in the system");
+    }
+
+    return freePlan;
+  }
 }

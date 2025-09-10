@@ -14,6 +14,7 @@ import {
   UserPlanSchema,
 } from "../../user-plan/schemas/user-plan.schema";
 import { Plan, PlanSchema } from "../../plan/schemas/plan.schema";
+import { User, UserSchema } from "../../users/schemas/user.schema";
 
 @Module({
   imports: [
@@ -29,6 +30,10 @@ import { Plan, PlanSchema } from "../../plan/schemas/plan.schema";
       {
         name: Plan.name,
         schema: PlanSchema,
+      },
+      {
+        name: User.name,
+        schema: UserSchema,
       },
     ]),
   ],

@@ -4,12 +4,18 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { UserService } from "../users/user.service";
+import { UserPlanService } from "../user-plan/user-plan.service";
+import { PlanService } from "../plan/plan.service";
 import { SendVerificationCodeDto, VerifyPhoneDto } from "../users/dto/user.dto";
 import { UserDocument } from "../users/schemas/user.schema";
 
 @Injectable()
 export class AuthService {
-  constructor(private readonly userService: UserService) {}
+  constructor(
+    private readonly userService: UserService,
+    private readonly userPlanService: UserPlanService,
+    private readonly planService: PlanService
+  ) {}
 
   async sendVerificationCode(sendVerificationCodeDto: SendVerificationCodeDto) {
     // Generate a mock verification code (123456 as requested)
@@ -74,6 +80,25 @@ export class AuthService {
         verificationCodeExpires: null,
       }
     );
+
+    // Check if user already has a plan
+    const existingUserPlan = await this.userPlanService.findByUserId(
+      (user as UserDocument)._id.toString()
+    );
+
+    // If user doesn't have a plan, assign the free plan
+    if (!existingUserPlan || existingUserPlan.length === 0) {
+      try {
+        const freePlan = await this.planService.findFreePlan();
+        await this.userPlanService.createFreePlanForUser(
+          (user as UserDocument)._id.toString()
+        );
+      } catch (error) {
+        console.error("Failed to assign free plan to user:", error);
+        // Don't throw error here to avoid breaking the verification flow
+        // The user can still proceed without a plan
+      }
+    }
 
     // Generate JWT token and return user data
     const loginResult = await this.userService.loginWithPhone(

@@ -31,6 +31,26 @@ export interface PaginatedResult<T> {
   };
 }
 
+export interface UserWithPlan extends User {
+  userPlan?: {
+    _id: string;
+    plan: {
+      _id: string;
+      title: string;
+      price: number;
+      currency: string;
+      features: string[];
+    };
+    status: string;
+    subscriptionType: string;
+    paymentStatus: string;
+    submissionsUsed: number;
+    submissionsLimit: number;
+    hasPaidPlan: boolean;
+    subscriptionEndDate?: Date;
+  };
+}
+
 @Injectable()
 export class UserService {
   constructor(
@@ -65,7 +85,9 @@ export class UserService {
     return savedUser;
   }
 
-  async findAll(queryDto: QueryUserDto): Promise<PaginatedResult<User>> {
+  async findAll(
+    queryDto: QueryUserDto
+  ): Promise<PaginatedResult<UserWithPlan>> {
     const {
       page = 1,
       limit = 10,
@@ -94,7 +116,7 @@ export class UserService {
     const skip = (page - 1) * limit;
 
     // Execute queries
-    const [data, total] = await Promise.all([
+    const [users, total] = await Promise.all([
       this.userModel
         .find(filter)
         .select("-verificationCode -verificationCodeExpires")
@@ -105,10 +127,51 @@ export class UserService {
       this.userModel.countDocuments(filter).exec(),
     ]);
 
+    // Get user plans for all users
+    const usersWithPlans: UserWithPlan[] = await Promise.all(
+      users.map(async (user) => {
+        try {
+          const userPlans = await this.userPlanService.findByUserId(
+            user._id.toString()
+          );
+          const userPlan = userPlans.length > 0 ? userPlans[0] : null;
+
+          return {
+            ...user.toObject(),
+            userPlan: userPlan
+              ? {
+                  _id: (userPlan as any)._id.toString(),
+                  plan: {
+                    _id: (userPlan.plan as any)._id.toString(),
+                    title: (userPlan.plan as any).title,
+                    price: (userPlan.plan as any).price,
+                    currency: (userPlan.plan as any).currency,
+                    features: (userPlan.plan as any).features || [],
+                  },
+                  status: userPlan.status,
+                  subscriptionType: userPlan.subscriptionType,
+                  paymentStatus: userPlan.paymentStatus,
+                  submissionsUsed: userPlan.submissionsUsed,
+                  submissionsLimit: userPlan.submissionsLimit,
+                  hasPaidPlan: userPlan.hasPaidPlan,
+                  subscriptionEndDate: userPlan.subscriptionEndDate,
+                }
+              : undefined,
+          };
+        } catch (error) {
+          // If user plan fetch fails, return user without plan
+          return {
+            ...user.toObject(),
+            userPlan: undefined,
+          };
+        }
+      })
+    );
+
     const totalPages = Math.ceil(total / limit);
 
     return {
-      data,
+      data: usersWithPlans,
       pagination: {
         page,
         limit,
@@ -120,7 +183,7 @@ export class UserService {
     };
   }
 
-  async findOne(id: ObjectIdType): Promise<User> {
+  async findOne(id: ObjectIdType): Promise<UserWithPlan> {
     const user = await this.userModel
       .findById(id)
       .select("-verificationCode -verificationCodeExpires")
@@ -128,7 +191,41 @@ export class UserService {
     if (!user) {
       throw new NotFoundException("User not found");
     }
-    return user;
+
+    // Get user plan
+    try {
+      const userPlans = await this.userPlanService.findByUserId(id.toString());
+      const userPlan = userPlans.length > 0 ? userPlans[0] : null;
+
+      return {
+        ...user.toObject(),
+        userPlan: userPlan
+          ? {
+              _id: (userPlan as any)._id.toString(),
+              plan: {
+                _id: (userPlan.plan as any)._id.toString(),
+                title: (userPlan.plan as any).title,
+                price: (userPlan.plan as any).price,
+                currency: (userPlan.plan as any).currency,
+                features: (userPlan.plan as any).features || [],
+              },
+              status: userPlan.status,
+              subscriptionType: userPlan.subscriptionType,
+              paymentStatus: userPlan.paymentStatus,
+              submissionsUsed: userPlan.submissionsUsed,
+              submissionsLimit: userPlan.submissionsLimit,
+              hasPaidPlan: userPlan.hasPaidPlan,
+              subscriptionEndDate: userPlan.subscriptionEndDate,
+            }
+          : undefined,
+      };
+    } catch (error) {
+      // If user plan fetch fails, return user without plan
+      return {
+        ...user.toObject(),
+        userPlan: undefined,
+      };
+    }
   }
 
   async findByPhone(phone: string): Promise<User> {
