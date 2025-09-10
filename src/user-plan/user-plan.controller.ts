@@ -13,7 +13,7 @@ import {
   ApiBearerAuth,
 } from "@nestjs/swagger";
 import { UserPlanService } from "./user-plan.service";
-import { MockPaymentDto } from "./dto/user-plan.dto";
+import { MockPaymentDto, PromoteUserDto } from "./dto/user-plan.dto";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { RolesGuard } from "../auth/guards/roles.guard";
 import { Roles } from "../auth/decorators/roles.decorator";
@@ -66,5 +66,24 @@ export class UserPlanController {
   async getAnalytics() {
     const analytics = await this.userPlanService.getUserPlanAnalytics();
     return { data: analytics };
+  }
+
+  @Post("promote")
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  @ApiBearerAuth("JWT-auth")
+  @ApiOperation({ summary: "Promote user to premium plan (Admin only)" })
+  @ApiResponse({ status: 200, description: "User promoted successfully" })
+  @ApiResponse({
+    status: 400,
+    description: "Invalid request or user already on plan",
+  })
+  @ApiResponse({ status: 404, description: "User or plan not found" })
+  async promoteUser(@Body() promoteUserDto: PromoteUserDto) {
+    const result = await this.userPlanService.promoteUser(promoteUserDto);
+    return {
+      message: "User promoted successfully",
+      data: result,
+    };
   }
 }

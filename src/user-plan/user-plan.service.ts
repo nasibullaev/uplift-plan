@@ -28,6 +28,7 @@ import {
   SubscriptionUpdateDto,
   RequestPlanChangeDto,
   MockPaymentDto,
+  PromoteUserDto,
 } from "./dto/user-plan.dto";
 import { ObjectIdType } from "../types/object-id.type";
 
@@ -950,5 +951,75 @@ export class UserPlanService {
     userPlan.submissionsUsed += 1;
     userPlan.totalSubmissions += 1;
     await userPlan.save();
+  }
+
+  async promoteUser(promoteUserDto: PromoteUserDto): Promise<UserPlan> {
+    const { userId, planId, reason } = promoteUserDto;
+
+    // Find the target plan
+    let targetPlan;
+    try {
+      targetPlan = await this.planModel.findById(planId).exec();
+    } catch (error) {
+      throw new BadRequestException(`Invalid plan ID format: ${planId}`);
+    }
+
+    if (!targetPlan) {
+      throw new NotFoundException(`Plan with ID ${planId} not found`);
+    }
+
+    // Check if the plan is active
+    if (!targetPlan.isActive) {
+      throw new BadRequestException(`Plan ${targetPlan.title} is not active`);
+    }
+
+    // Find user's current plan
+    let userPlan: UserPlanDocument | null = await this.userPlanModel
+      .findOne({ user: userId })
+      .exec();
+
+    if (!userPlan) {
+      // If user doesn't have a plan, create one
+      userPlan = await this.createFreePlanForUser(userId);
+    }
+
+    // Check if user is already on this plan
+    if (userPlan.plan.toString() === planId) {
+      throw new BadRequestException("User is already subscribed to this plan");
+    }
+
+    // Use the plan's duration
+    const durationInDays = targetPlan.durationInDays || 30;
+
+    // Update user plan with new plan details
+    userPlan.plan = planId;
+    userPlan.paymentStatus = PaymentStatus.COMPLETED;
+    userPlan.subscriptionType = SubscriptionType.PAID;
+    userPlan.hasPaidPlan = true;
+    userPlan.subscriptionStartDate = new Date();
+    userPlan.subscriptionEndDate = new Date(
+      Date.now() + durationInDays * 24 * 60 * 60 * 1000
+    );
+    userPlan.nextPaymentDate = new Date(
+      Date.now() + durationInDays * 24 * 60 * 60 * 1000
+    );
+    userPlan.submissionsLimit =
+      targetPlan.maxSubmissions || userPlan.submissionsLimit;
+    userPlan.features = targetPlan.features || userPlan.features;
+    userPlan.status = UserPlanStatus.ACTIVE;
+    userPlan.isActive = true;
+
+    // Add promotion metadata
+    userPlan.metadata = {
+      ...userPlan.metadata,
+      promotedBy: "admin",
+      promotionDate: new Date(),
+      promotionReason: reason,
+      promotionDuration: durationInDays,
+    };
+
+    await userPlan.save();
+
+    return userPlan;
   }
 }

@@ -386,3 +386,20 @@ export class MockPaymentDto {
   @IsIn(["Click", "Payme"])
   readonly paymentMethod: string;
 }
+
+export class PromoteUserDto {
+  @ApiProperty({ description: "User ID to promote" })
+  @IsString()
+  @IsNotEmpty()
+  readonly userId: ObjectIdType;
+
+  @ApiProperty({ description: "Plan ID to promote user to" })
+  @IsString()
+  @IsNotEmpty()
+  readonly planId: ObjectIdType;
+
+  @ApiPropertyOptional({ description: "Reason for promotion" })
+  @IsString()
+  @IsOptional()
+  readonly reason?: string;
+}
