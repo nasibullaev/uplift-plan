@@ -105,16 +105,15 @@ export class GeminiService {
     const structurePrompt = `
 Detect the structure of the following IELTS essay.
 Return ONLY JSON with fields:
-
-body_count: number of body paragraphs
-has_intro: true/false
-has_conclusion: true/false
+- body_count: number of body paragraphs
+- has_intro: true/false
+- has_conclusion: true/false
 
 Rules:
-Paragraphs are separated by double line breaks.
-Introduction = first paragraph (general opening).
-Conclusion = last paragraph (contains "in conclusion", "to sum up", etc).
-Do not guess extra paragraphs. Count exactly as they appear.
+1. Paragraphs are separated by double line breaks.
+2. Introduction = first paragraph (general opening).
+3. Conclusion = last paragraph (contains "in conclusion", "to sum up", etc).
+4. Do not guess extra paragraphs. Count exactly as they appear.
 
 Essay:
 """${body}"""
@@ -149,98 +148,78 @@ Essay:
     hasIntro: boolean,
     hasConclusion: boolean
   ) {
-    const model = this.genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+    const model = this.genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
-    // --- SYNTAX CORRECTED PROMPT ---
     const analysisPrompt = `
-SYSTEM PERSONA
+# ROLE & GOAL
+You are a senior IELTS examiner. Your task is to provide a comprehensive, accurate, and constructive evaluation of an IELTS Writing Task 2 essay based on the four official marking criteria.
 
-You are a specialized API endpoint. Your sole function is to process an IELTS essay and return a single, valid JSON object with a comprehensive analysis. You must not fail to produce valid JSON.
+# CONTEXT
+- **Candidate's Target Score:** ${targetScore}
+- **Original Essay:** """${body}"""
 
-CRITICAL DIRECTIVES
+# DETECTED STRUCTURE OF ORIGINAL ESSAY
+- Introduction Found: ${hasIntro}
+- Conclusion Found: ${hasConclusion}
+- Body Paragraphs Counted: ${bodyCount}
 
-1.  **Primary Directive**: Your entire output must be a single, raw, valid JSON object.
-2.  **No Extraneous Text**: ABSOLUTELY NO text, explanations, apologies, or markdown formatting should surround the JSON object. The response must start with the character '{' and end with the character '}'.
-3.  **Adhere to Schema**: The JSON structure must strictly follow the schema provided below. All specified fields are mandatory.
+# CRITICAL RULES & INSTRUCTIONS
+1. **MUST MAINTAIN BODY PARAGRAPH COUNT:** The \`improvedVersions\` you generate MUST have exactly ${bodyCount} body paragraphs in the "body" array. Do NOT merge, split, add, or remove body paragraphs from this count. This is the most important rule.
+2. **EACH "BODY" ELEMENT IS A FULL PARAGRAPH:** Each string element within the \`body\` array of your JSON output MUST be a complete, multi-sentence paragraph. **DO NOT split a paragraph into an array of its individual sentences.**
+3. **ALWAYS GENERATE INTRO/CONCLUSION:** In the \`improvedVersions\`, you must ALWAYS write a full introduction and a full conclusion, even if the original essay was missing them.
+4. **OUTPUT JSON ONLY:** Your entire output must be a single, valid JSON object that adheres to the schema. Do not include any text or commentary outside of the JSON object.
 
-STEP-BY-STEP INTERNAL PROCESS (Perform these steps internally before generating the final JSON)
-
-1.  **Deep Analysis**: As an expert IELTS examiner, deeply analyze the "Original Essay" based on the four official criteria (Task Response, Coherence/Cohesion, Lexical Resource, Grammatical Range/Accuracy).
-2.  **Scoring**: Assign a precise overall score and individual criteria scores (0-9, allowing .5 increments). Identify specific mistakes and actionable suggestions.
-3.  **Generate Improved Versions**: Write three complete, distinct rewrites of the *original essay*. These are not generic templates. They are enhanced versions of the user's own work, specifically targeting Band 7, Band 8, and Band 9 criteria. Maintain the original essay's core ideas and arguments.
-4.  **Write Criteria Feedback**: For each of the three improved versions, write specific, targeted feedback explaining *why* that version meets the criteria for its respective band score.
-5.  **Assemble JSON**: Construct the final JSON object using all the data generated in the previous steps. Before outputting, double-check that the JSON is perfectly formed and adheres to the schema.
-
-CONTEXT
-
-*   **Candidate's Target Score**: ${targetScore}
-*   **Original Essay**: """${body}"""
-*   **Detected Structure**: Introduction: ${hasIntro}, Conclusion: ${hasConclusion}, Body Paragraphs: ${bodyCount}
-
-MANDATORY STRUCTURAL RULE
-
-*   **Preserve Body Paragraph Count**: Each of the three 'improvedVersions' you generate MUST have a "body" array containing exactly **${bodyCount}** string elements. This is a non-negotiable structural constraint. Do not merge, split, add, or remove body paragraphs.
-
-Strictly adhere to the following JSON OUTPUT SCHEMA:
+# JSON OUTPUT SCHEMA
 {
-  "score": number,
+  "score": number (0-9),
   "criteriaScores": {
-    "taskResponse": number,
-    "coherence": number,
-    "lexical": number,
-    "grammar": number
+    "taskResponse": number (0-9),
+    "coherence": number (0-9),
+    "lexical": number (0-9),
+    "grammar": number (0-9)
   },
   "aiFeedback": {
-    "mistakes": [string],
-    "suggestions": [string],
+    "mistakes": string[],
+    "suggestions": string[],
     "improvedVersions": {
       "band7": {
-        "introduction": "The full text of the rewritten introduction for Band 7.",
-        "body": [
-          "The full text of the first rewritten body paragraph for Band 7.",
-          "The full text of the second rewritten body paragraph for Band 7."
-        ],
-        "conclusion": "The full text of the rewritten conclusion for Band 7.",
+        "introduction": string,
+        "body": string[],
+        "conclusion": string,
         "criteriaResponse": {
-          "taskResponse": "Specific feedback on why this version meets Band 7 for Task Response.",
-          "coherence": "Specific feedback on why this version meets Band 7 for Coherence and Cohesion.",
-          "lexical": "Specific feedback on why this version meets Band 7 for Lexical Resource.",
-          "grammar": "Specific feedback on why this version meets Band 7 for Grammatical Range and Accuracy."
+          "taskResponse": string,
+          "coherence": string,
+          "lexical": string,
+          "grammar": string
         }
       },
       "band8": {
-        "introduction": "The full text of the rewritten introduction for Band 8.",
-        "body": [
-          "The full text of the first rewritten body paragraph for Band 8.",
-          "The full text of the second rewritten body paragraph for Band 8."
-        ],
-        "conclusion": "The full text of the rewritten conclusion for Band 8.",
+        "introduction": string,
+        "body": string[],
+        "conclusion": string,
         "criteriaResponse": {
-          "taskResponse": "Specific feedback on why this version meets Band 8 for Task Response.",
-          "coherence": "Specific feedback on why this version meets Band 8 for Coherence and Cohesion.",
-          "lexical": "Specific feedback on why this version meets Band 8 for Lexical Resource.",
-          "grammar": "Specific feedback on why this version meets Band 8 for Grammatical Range and Accuracy."
+          "taskResponse": string,
+          "coherence": string,
+          "lexical": string,
+          "grammar": string
         }
       },
       "band9": {
-        "introduction": "The full text of the rewritten introduction for Band 9.",
-        "body": [
-          "The full text of the first rewritten body paragraph for Band 9.",
-          "The full text of the second rewritten body paragraph for Band 9."
-        ],
-        "conclusion": "The full text of the rewritten conclusion for Band 9.",
+        "introduction": string,
+        "body": string[],
+        "conclusion": string,
         "criteriaResponse": {
-          "taskResponse": "Specific feedback on why this version meets Band 9 for Task Response.",
-          "coherence": "Specific feedback on why this version meets Band 9 for Coherence and Cohesion.",
-          "lexical": "Specific feedback on why this version meets Band 9 for Lexical Resource.",
-          "grammar": "Specific feedback on why this version meets Band 9 for Grammatical Range and Accuracy."
+          "taskResponse": string,
+          "coherence": string,
+          "lexical": string,
+          "grammar": string
         }
       }
     }
   }
 }
 
-Final instruction: Begin your response with '{'. Do not add any other text.
+Return ONLY the JSON object, no additional text.
 `;
 
     const result = await model.generateContent(analysisPrompt);
@@ -255,9 +234,6 @@ Final instruction: Begin your response with '{'. Do not add any other text.
       }
       throw new Error("No JSON found in response");
     } catch (error) {
-      this.logger.error(
-        `Failed to parse JSON. Raw response from Gemini: \n---\n${text}\n---`
-      );
       this.logger.error("Error parsing analysis response:", error);
       // Fallback analysis
       return this.getFallbackAnalysis();
