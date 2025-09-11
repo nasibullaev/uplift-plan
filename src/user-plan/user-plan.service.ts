@@ -189,7 +189,7 @@ export class UserPlanService {
     return userPlan;
   }
 
-  async findByUserId(userId: ObjectIdType): Promise<UserPlan[]> {
+  async findByUserId(userId: ObjectIdType): Promise<UserPlanDocument[]> {
     return this.userPlanModel
       .find({ user: userId })
       .populate("plan", "title price currency features")

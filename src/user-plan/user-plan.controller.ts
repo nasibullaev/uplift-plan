@@ -40,20 +40,22 @@ export class UserPlanController {
   @Post("payment")
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth("JWT-auth")
-  @ApiOperation({ summary: "Process mock payment for plan upgrade (MVP)" })
-  @ApiResponse({ status: 200, description: "Payment processed successfully" })
+  @ApiOperation({
+    summary: "Process payment for plan upgrade (Redirects to Payme)",
+  })
+  @ApiResponse({ status: 200, description: "Payment created successfully" })
   @ApiResponse({ status: 400, description: "Payment failed" })
-  async processMockPayment(
-    @Body() mockPaymentDto: MockPaymentDto,
-    @Request() req
-  ) {
-    const result = await this.userPlanService.processMockPayment(
-      req.user.sub,
-      mockPaymentDto
-    );
+  async processPayment(@Body() mockPaymentDto: MockPaymentDto, @Request() req) {
+    // This endpoint is now deprecated in favor of /payments/create
+    // Redirect to the new payment system
     return {
-      message: "Payment processed successfully",
-      data: result,
+      message:
+        "This endpoint is deprecated. Please use /payments/create instead.",
+      redirectTo: "/payments/create",
+      data: {
+        planId: mockPaymentDto.planId,
+        paymentMethod: mockPaymentDto.paymentMethod,
+      },
     };
   }
 
