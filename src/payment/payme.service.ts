@@ -54,6 +54,13 @@ export class PaymeService {
     this.baseUrl =
       this.configService.get<string>("PAYME_API_URL") ||
       "https://checkout.paycom.uz/api";
+
+    // Alternative URLs to try if the default doesn't work
+    this.logger.log(`Using Payme API URL: ${this.baseUrl}`);
+    this.logger.log(`Alternative URLs to try if this fails:`);
+    this.logger.log(`- https://checkout.paycom.uz/api`);
+    this.logger.log(`- https://payme.uz/api`);
+    this.logger.log(`- https://api.payme.uz`);
     this.callbackUrl =
       this.configService.get<string>("PAYME_CALLBACK_URL") ||
       `${this.configService.get<string>("CLIENT_URL") || "https://930f6eba2712.ngrok-free.app"}/api/payments/payme/callback`;
@@ -61,6 +68,13 @@ export class PaymeService {
     if (!this.merchantId || !this.merchantKey) {
       throw new Error("Payme credentials not configured");
     }
+
+    // Log configuration for debugging
+    this.logger.log(`Payme Service initialized:`);
+    this.logger.log(`- Merchant ID: ${this.merchantId ? "SET" : "NOT SET"}`);
+    this.logger.log(`- Merchant Key: ${this.merchantKey ? "SET" : "NOT SET"}`);
+    this.logger.log(`- Base URL: ${this.baseUrl}`);
+    this.logger.log(`- Callback URL: ${this.callbackUrl}`);
   }
 
   /**
@@ -72,12 +86,34 @@ export class PaymeService {
     try {
       const { orderId, amount, description, returnUrl } = paymentRequest;
 
+      // Validate input parameters
+      if (!orderId || typeof orderId !== "string") {
+        throw new BadRequestException(
+          "Order ID is required and must be a string"
+        );
+      }
+
+      if (!amount || typeof amount !== "number" || amount <= 0) {
+        throw new BadRequestException(
+          "Amount is required and must be a positive number"
+        );
+      }
+
       // Validate amount (minimum 1000 tiyin = 10 UZS)
       if (amount < 1000) {
         throw new BadRequestException(
           "Amount must be at least 1000 tiyin (10 UZS)"
         );
       }
+
+      this.logger.log(`Creating payment with params:`, {
+        orderId,
+        amount,
+        description,
+        returnUrl,
+        merchantId: this.merchantId,
+        baseUrl: this.baseUrl,
+      });
 
       const params = {
         id: this.generateId(),
@@ -87,15 +123,6 @@ export class PaymeService {
           account: {
             orderId: orderId,
           },
-          description: description || `Payment for order ${orderId}`,
-          callback_url: this.callbackUrl,
-          return_url:
-            returnUrl ||
-            `${this.configService.get<string>("CLIENT_URL") || "http://localhost:3000"}/payment/success`,
-          // Add required merchant_prepare_id
-          merchant_prepare_id: this.generateId(),
-          // Add additional required fields based on Payme documentation
-          merchant_trans_id: orderId,
         },
       };
 
@@ -268,7 +295,50 @@ export class PaymeService {
    */
   private generateSignature(params: any): string {
     const data = JSON.stringify(params);
-    return crypto.HmacSHA256(data, this.merchantKey).toString();
+    const signature = crypto.HmacSHA256(data, this.merchantKey).toString();
+
+    this.logger.debug("Signature generation:", {
+      data,
+      merchantKey: this.merchantKey ? "SET" : "NOT SET",
+      signature,
+    });
+
+    return signature;
+  }
+
+  /**
+   * Test method to verify signature generation
+   */
+  testSignatureGeneration(): { success: boolean; error?: string; data?: any } {
+    try {
+      const testParams = {
+        id: "123456789",
+        method: "cards.create",
+        params: {
+          amount: 100000,
+          account: {
+            orderId: "test_order_123",
+          },
+        },
+      };
+
+      const signature = this.generateSignature(testParams);
+
+      return {
+        success: true,
+        data: {
+          testParams,
+          signature,
+          merchantId: this.merchantId,
+          merchantKeySet: !!this.merchantKey,
+        },
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
   }
 
   /**
@@ -381,5 +451,145 @@ export class PaymeService {
 
     const encodedParams = Buffer.from(paramString).toString("base64");
     return `https://checkout.paycom.uz/${encodedParams}`;
+  }
+
+  /**
+   * Alternative payment creation method with minimal parameters
+   */
+  async createPaymentSimple(
+    orderId: string,
+    amount: number,
+    description?: string
+  ): Promise<PaymePaymentResponse> {
+    try {
+      this.logger.log(
+        `Creating simple payment for order ${orderId} with amount ${amount}`
+      );
+
+      const params = {
+        id: this.generateId(),
+        method: "cards.create",
+        params: {
+          amount: amount,
+          account: {
+            orderId: orderId,
+          },
+        },
+      };
+
+      const signature = this.generateSignature(params);
+      const headers = {
+        "Content-Type": "application/json",
+        "X-Auth": `${this.merchantId}:${signature}`,
+      };
+
+      this.logger.debug(
+        "Simple Payme API Request:",
+        JSON.stringify(params, null, 2)
+      );
+      this.logger.debug(
+        "Simple Request Headers:",
+        JSON.stringify(headers, null, 2)
+      );
+
+      const response = await axios.post(this.baseUrl, params, { headers });
+
+      this.logger.debug(
+        "Simple Payme API Response:",
+        JSON.stringify(response.data, null, 2)
+      );
+
+      if (response.data.result && response.data.result.card) {
+        return {
+          success: true,
+          paymentUrl: response.data.result.card.url,
+          transactionId: response.data.result.card.token,
+        };
+      } else {
+        this.logger.error("Simple payment creation failed:", response.data);
+        return {
+          success: false,
+          error: response.data.error?.message || "Payment creation failed",
+        };
+      }
+    } catch (error) {
+      this.logger.error("Error creating simple payment:", error);
+      this.logger.error("Error response data:", error.response?.data);
+      return {
+        success: false,
+        error:
+          error.response?.data?.error?.message ||
+          error.message ||
+          "Payment creation failed",
+      };
+    }
+  }
+
+  /**
+   * Try receipts.create method as alternative
+   */
+  async createReceiptPayment(
+    orderId: string,
+    amount: number,
+    description?: string
+  ): Promise<PaymePaymentResponse> {
+    try {
+      this.logger.log(
+        `Creating receipt payment for order ${orderId} with amount ${amount}`
+      );
+
+      const params = {
+        id: this.generateId(),
+        method: "receipts.create",
+        params: {
+          amount: amount,
+          account: {
+            orderId: orderId,
+          },
+        },
+      };
+
+      const signature = this.generateSignature(params);
+      const headers = {
+        "Content-Type": "application/json",
+        "X-Auth": `${this.merchantId}:${signature}`,
+      };
+
+      this.logger.debug(
+        "Receipt Payme API Request:",
+        JSON.stringify(params, null, 2)
+      );
+
+      const response = await axios.post(this.baseUrl, params, { headers });
+
+      this.logger.debug(
+        "Receipt Payme API Response:",
+        JSON.stringify(response.data, null, 2)
+      );
+
+      if (response.data.result && response.data.result.receipt) {
+        return {
+          success: true,
+          paymentUrl: response.data.result.receipt.url,
+          transactionId: response.data.result.receipt._id,
+        };
+      } else {
+        this.logger.error("Receipt payment creation failed:", response.data);
+        return {
+          success: false,
+          error: response.data.error?.message || "Payment creation failed",
+        };
+      }
+    } catch (error) {
+      this.logger.error("Error creating receipt payment:", error);
+      this.logger.error("Error response data:", error.response?.data);
+      return {
+        success: false,
+        error:
+          error.response?.data?.error?.message ||
+          error.message ||
+          "Payment creation failed",
+      };
+    }
   }
 }

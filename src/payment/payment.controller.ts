@@ -173,6 +173,143 @@ export class PaymentController {
     }
   }
 
+  @Post("debug-config")
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth("JWT-auth")
+  @ApiOperation({ summary: "Debug Payme configuration" })
+  async debugConfig(@Request() req) {
+    const userId = req.user.sub;
+
+    return {
+      message: "Payme configuration debug",
+      data: {
+        userId,
+        merchantId: this.paymeService["merchantId"] ? "SET" : "NOT SET",
+        merchantKey: this.paymeService["merchantKey"] ? "SET" : "NOT SET",
+        baseUrl: this.paymeService["baseUrl"],
+        callbackUrl: this.paymeService["callbackUrl"],
+        environment: process.env.NODE_ENV,
+      },
+    };
+  }
+
+  @Post("debug-signature")
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth("JWT-auth")
+  @ApiOperation({ summary: "Debug Payme signature generation" })
+  async debugSignature(@Request() req) {
+    const userId = req.user.sub;
+    const signatureTest = this.paymeService.testSignatureGeneration();
+
+    return {
+      message: "Payme signature debug",
+      data: {
+        userId,
+        signatureTest,
+      },
+    };
+  }
+
+  @Post("create-receipt")
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth("JWT-auth")
+  @ApiOperation({ summary: "Create payment using receipts.create method" })
+  @ApiResponse({ status: 200, description: "Payment created successfully" })
+  @ApiResponse({ status: 400, description: "Invalid request" })
+  async createReceiptPayment(@Body() body: { planId: string }, @Request() req) {
+    const userId = req.user.sub;
+    const { planId } = body;
+
+    this.logger.log(
+      `Creating receipt payment for user ${userId} to plan ${planId}`
+    );
+
+    // Find the target plan
+    const targetPlan = await this.planService.findOne(planId);
+    if (!targetPlan) {
+      throw new NotFoundException(`Plan with ID ${planId} not found`);
+    }
+
+    // Generate unique order ID
+    const orderId = `order_${userId}_${planId}_${Date.now()}`;
+    const amountInTiyin = this.paymeService.convertToTiyin(targetPlan.price);
+
+    // Try receipt payment creation
+    const paymentResponse = await this.paymeService.createReceiptPayment(
+      orderId,
+      amountInTiyin,
+      `Upgrade to ${targetPlan.title} plan`
+    );
+
+    if (!paymentResponse.success) {
+      throw new BadRequestException(
+        paymentResponse.error || "Payment creation failed"
+      );
+    }
+
+    return {
+      message: "Receipt payment created successfully",
+      data: {
+        paymentUrl: paymentResponse.paymentUrl,
+        orderId,
+        transactionId: paymentResponse.transactionId,
+        amount: targetPlan.price,
+        planName: targetPlan.title,
+      },
+    };
+  }
+
+  @Post("create-simple")
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth("JWT-auth")
+  @ApiOperation({
+    summary: "Create payment with minimal parameters (for testing)",
+  })
+  @ApiResponse({ status: 200, description: "Payment created successfully" })
+  @ApiResponse({ status: 400, description: "Invalid request" })
+  async createPaymentSimple(@Body() body: { planId: string }, @Request() req) {
+    const userId = req.user.sub;
+    const { planId } = body;
+
+    this.logger.log(
+      `Creating simple payment for user ${userId} to plan ${planId}`
+    );
+
+    // Find the target plan
+    const targetPlan = await this.planService.findOne(planId);
+    if (!targetPlan) {
+      throw new NotFoundException(`Plan with ID ${planId} not found`);
+    }
+
+    // Generate unique order ID
+    const orderId = `order_${userId}_${planId}_${Date.now()}`;
+    const amountInTiyin = this.paymeService.convertToTiyin(targetPlan.price);
+
+    // Try simple payment creation
+    const paymentResponse = await this.paymeService.createPaymentSimple(
+      orderId,
+      amountInTiyin,
+      `Upgrade to ${targetPlan.title} plan`
+    );
+
+    if (!paymentResponse.success) {
+      throw new BadRequestException(
+        paymentResponse.error || "Payment creation failed"
+      );
+    }
+
+    return {
+      message: "Simple payment created successfully",
+      data: {
+        paymentUrl: paymentResponse.paymentUrl,
+        orderId,
+        transactionId: paymentResponse.transactionId,
+        amount: targetPlan.price,
+        planName: targetPlan.title,
+      },
+    };
+  }
+
   @Post("verify")
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth("JWT-auth")
