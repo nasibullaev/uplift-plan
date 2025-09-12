@@ -100,7 +100,7 @@ export class GeminiService {
   }
 
   private async detectEssayStructure(body: string) {
-    const model = this.genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+    const model = this.genAI.getGenerativeModel({ model: "gemini-2.5-pro" });
 
     const structurePrompt = `
 Detect the structure of the following IELTS essay.
@@ -148,7 +148,7 @@ Essay:
     hasIntro: boolean,
     hasConclusion: boolean
   ) {
-    const model = this.genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const model = this.genAI.getGenerativeModel({ model: "gemini-2.5-pro" });
 
     const analysisPrompt = `SYSTEM PERSONA
     
