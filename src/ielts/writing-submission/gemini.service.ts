@@ -103,21 +103,25 @@ export class GeminiService {
     const model = this.genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
     const structurePrompt = `
-Detect the structure of the following IELTS essay.
-Return ONLY JSON with fields:
-- body_count: number of body paragraphs
-- has_intro: true/false
-- has_conclusion: true/false
-
-Rules:
-1. Paragraphs are separated by double line breaks.
-2. Introduction = first paragraph (general opening).
-3. Conclusion = last paragraph (contains "in conclusion", "to sum up", etc).
-4. Do not guess extra paragraphs. Count exactly as they appear.
-
-Essay:
-"""${body}"""
-`;
+    Detect the structure of the following IELTS essay.
+    Return ONLY JSON with fields:
+    - body_count: number of body paragraphs
+    - has_intro: true/false
+    - has_conclusion: true/false
+    
+    Rules for detection:
+    1. Paragraphs are separated by double line breaks.
+    2. The first paragraph is considered the introduction.
+    3. The last paragraph is considered the conclusion.
+    4. Body paragraphs are all paragraphs between the introduction and conclusion.
+    5. If there's only one paragraph, it's considered an introduction and has_conclusion and body_count will be false/0.
+    6. If there are two paragraphs, the first is intro, the second is conclusion, and body_count will be 0.
+    
+    Essay:
+    """
+    ${body}
+    """
+    `;
 
     const result = await model.generateContent(structurePrompt);
     const response = await result.response;
@@ -132,11 +136,11 @@ Essay:
       throw new Error("No JSON found in response");
     } catch (error) {
       this.logger.error("Error parsing structure response:", error);
-      // Fallback structure
+      // Fallback structure in case of parsing error
       return {
-        body_count: 2,
-        has_intro: true,
-        has_conclusion: true,
+        body_count: 0, // Default to 0 for a more neutral fallback
+        has_intro: false,
+        has_conclusion: false,
       };
     }
   }

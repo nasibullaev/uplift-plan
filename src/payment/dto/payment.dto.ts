@@ -35,13 +35,16 @@ export class PaymeCallbackDto {
   @IsObject()
   @IsNotEmpty()
   readonly params: {
-    id: string;
-    account: {
+    id?: string;
+    account?: {
       orderId: string;
     };
-    amount: number;
-    time: number;
+    amount?: number;
+    time?: number;
     reason?: number;
+    from?: number;
+    to?: number;
+    password?: string;
   };
 }
 
