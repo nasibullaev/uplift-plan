@@ -5,6 +5,9 @@ import { ConfigModule, ConfigService } from "@nestjs/config";
 import { JwtStrategy } from "./strategies/jwt.strategy";
 import { AuthController } from "./auth.controller";
 import { AuthService } from "./auth.service";
+import { OtpService } from "./otp.service";
+import { SmsService } from "./sms.service";
+import { RateLimitService } from "./rate-limit.service";
 import { UserModule } from "../users/user.module";
 import { UserPlanModule } from "../user-plan/user-plan.module";
 import { PlanModule } from "../plan/plan.module";
@@ -25,7 +28,20 @@ import { PlanModule } from "../plan/plan.module";
     PlanModule,
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy],
-  exports: [JwtModule, JwtStrategy, AuthService],
+  providers: [
+    AuthService,
+    OtpService,
+    SmsService,
+    RateLimitService,
+    JwtStrategy,
+  ],
+  exports: [
+    JwtModule,
+    JwtStrategy,
+    AuthService,
+    OtpService,
+    SmsService,
+    RateLimitService,
+  ],
 })
 export class AuthModule {}
