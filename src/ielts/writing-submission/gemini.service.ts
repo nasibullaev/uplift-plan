@@ -163,12 +163,13 @@ export class GeminiService {
     1.  **Primary Directive**: Your entire output must be a single, raw, valid JSON object.
     2.  **No Extraneous Text**: ABSOLUTELY NO text, explanations, apologies, or markdown formatting should surround the JSON object. The response must start with the character '{' and end with the character '}'.
     3.  **Adhere to Schema**: The JSON structure must strictly follow the schema provided below. All specified fields are mandatory.
+    4.  **Preserve Brevity**: When generating the 'improvedVersions', your goal is quality enhancement, not quantity. The rewrites for Band 7, 8, and 9 **must** maintain a similar word count and sentence volume to the 'Original Essay'. Avoid unnecessary elaboration or adding new ideas. The essence and length of the original must be preserved.
     
     STEP-BY-STEP INTERNAL PROCESS (Perform these steps internally before generating the final JSON)
     
     1.  **Deep Analysis**: As an expert IELTS examiner, deeply analyze the "Original Essay" based on the four official criteria (Task Response, Coherence/Cohesion, Lexical Resource, Grammatical Range/Accuracy).
     2.  **Scoring**: Assign a precise overall score and individual criteria scores (0-9, allowing .5 increments). Identify specific mistakes and actionable suggestions.
-    3.  **Generate Improved Versions**: Write three complete, distinct rewrites of the *original essay*. These are not generic templates. They are enhanced versions of the user's own work, specifically targeting Band 7, Band 8, and Band 9 criteria. Maintain the original essay's core ideas and arguments.
+    3.  **Generate Improved Versions**: Write three complete, distinct rewrites of the *original essay*. These are not generic templates but are enhanced versions of the user's own work, targeting Band 7, Band 8, and Band 9. **Crucially, these rewrites must respect the original essay's length and conciseness.** You will maintain the core ideas and arguments while improving vocabulary, grammar, and structure, but you will **not** significantly increase the word count.
     4.  **Write Criteria Feedback**: For each of the three improved versions, write specific, targeted feedback explaining *why* that version meets the criteria for its respective band score.
     5.  **Assemble JSON**: Construct the final JSON object using all the data generated in the previous steps. Before outputting, double-check that the JSON is perfectly formed and adheres to the schema.
     
@@ -241,8 +242,7 @@ export class GeminiService {
       }
     }
     
-    Final instruction: Begin your response with '{'. Do not add any other text.
-    `;
+    Final instruction: Begin your response with '{'. Do not add any other text.`;
 
     const result = await model.generateContent(analysisPrompt);
     const response = await result.response;

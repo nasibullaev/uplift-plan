@@ -23,7 +23,7 @@ async function bootstrap() {
       "http://127.0.0.1:5173",
       "https://428aae5155d5.ngrok-free.app",
       "https://uplift-front-admin.vercel.app",
-      "https://9bbf6d8ffc2e.ngrok-free.app",
+      "https://improvely.ai",
       process.env.FRONTEND_URL || "http://localhost:5173",
       "https://dead.uz",
     ],
