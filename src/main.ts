@@ -21,6 +21,7 @@ async function bootstrap() {
       "http://127.0.0.1:3000",
       "http://127.0.0.1:4000",
       "http://127.0.0.1:5173",
+      "https://uplift-front-admin.vercel.app",
       process.env.FRONTEND_URL || "http://localhost:5173",
       "https://dead.uz",
     ],

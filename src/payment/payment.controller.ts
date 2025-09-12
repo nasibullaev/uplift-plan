@@ -210,6 +210,54 @@ export class PaymentController {
     };
   }
 
+  @Post("create-direct")
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth("JWT-auth")
+  @ApiOperation({
+    summary: "Create payment URL using GET method (most reliable)",
+  })
+  @ApiResponse({ status: 200, description: "Payment URL created successfully" })
+  @ApiResponse({ status: 400, description: "Invalid request" })
+  async createDirectPayment(
+    @Body() body: { planId: string; returnUrl?: string },
+    @Request() req
+  ) {
+    const userId = req.user.sub;
+    const { planId, returnUrl } = body;
+
+    this.logger.log(
+      `Creating direct payment URL for user ${userId} to plan ${planId}`
+    );
+
+    // Find the target plan
+    const targetPlan = await this.planService.findOne(planId);
+    if (!targetPlan) {
+      throw new NotFoundException(`Plan with ID ${planId} not found`);
+    }
+
+    // Generate unique order ID
+    const orderId = `order_${userId}_${planId}_${Date.now()}`;
+    const amountInTiyin = this.paymeService.convertToTiyin(targetPlan.price);
+
+    // Create direct payment URL (no API call needed)
+    const paymentUrl = this.paymeService.createDirectPaymentUrl(
+      orderId,
+      amountInTiyin,
+      returnUrl
+    );
+
+    return {
+      message: "Direct payment URL created successfully",
+      data: {
+        paymentUrl,
+        orderId,
+        amount: targetPlan.price,
+        planName: targetPlan.title,
+        instructions: "Open the payment URL to complete your payment",
+      },
+    };
+  }
+
   @Post("create-receipt")
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth("JWT-auth")

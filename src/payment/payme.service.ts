@@ -427,9 +427,9 @@ export class PaymeService {
   }
 
   /**
-   * Create a payment URL using GET method (simpler approach)
+   * Create payment URL using GET method (most reliable)
    */
-  createCheckoutUrl(
+  createDirectPaymentUrl(
     orderId: string,
     amount: number,
     returnUrl?: string,
@@ -442,7 +442,7 @@ export class PaymeService {
       l: language,
       c:
         returnUrl ||
-        `${this.configService.get<string>("CLIENT_URL") || "https://930f6eba2712.ngrok-free.app"}/payment/success`,
+        this.configService.get<string>("CLIENT_URL") + "/payment/success",
     };
 
     const paramString = Object.entries(params)
