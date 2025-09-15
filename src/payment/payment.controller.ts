@@ -198,24 +198,30 @@ export class PaymentController {
       }
 
       // Then validate authorization
-      const authHeader = req.headers["x-auth"];
+      const authHeader = req.headers.authorization;
       if (!authHeader) {
-        this.logger.warn("Missing X-Auth header in Payme callback");
+        this.logger.warn("Missing Authorization header in Payme callback");
         return { error: { code: -32504, message: "Authorization invalid" } };
       }
 
-      // Validate authorization format (should be "merchant_id:signature")
-      const authParts = authHeader.split(":");
-      if (authParts.length !== 2) {
-        this.logger.warn("Invalid X-Auth header format in Payme callback");
+      // Validate authorization format (should be "Basic base64(merchant_id:signature)")
+      const authParts = authHeader.split(" ");
+      if (authParts.length !== 2 || authParts[0] !== "Basic") {
+        this.logger.warn(
+          "Invalid Authorization header format in Payme callback"
+        );
         return { error: { code: -32504, message: "Authorization invalid" } };
       }
 
       try {
-        const [merchantId, signature] = authParts;
+        // Decode the base64 authorization
+        const decodedAuth = Buffer.from(authParts[1], "base64").toString(
+          "utf-8"
+        );
+        const [merchantId, signature] = decodedAuth.split(":");
 
         if (!merchantId || !signature) {
-          this.logger.warn("Invalid X-Auth credentials format");
+          this.logger.warn("Invalid Authorization credentials format");
           return { error: { code: -32504, message: "Authorization invalid" } };
         }
 
