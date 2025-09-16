@@ -76,12 +76,27 @@ export class Transaction {
   transaction?: string; // Номер или идентификатор транзакции в биллинге мерчанта
 
   @Prop({
-    enum: Object.values(TransactionState),
+    enum: [
+      TransactionState.CREATED,
+      TransactionState.PERFORMED,
+      TransactionState.CANCELLED,
+      TransactionState.CANCELLED_AFTER_PERFORMED,
+    ],
     default: TransactionState.CREATED,
   })
   state: TransactionState; // Состояние транзакции
 
-  @Prop({ enum: Object.values(TransactionReason), default: null })
+  @Prop({
+    enum: [
+      TransactionReason.RECEIVER_NOT_FOUND,
+      TransactionReason.DEBIT_ERROR,
+      TransactionReason.TRANSACTION_ERROR,
+      TransactionReason.TIMEOUT,
+      TransactionReason.REFUND,
+      TransactionReason.UNKNOWN_ERROR,
+    ],
+    default: null,
+  })
   reason?: TransactionReason; // Причина отмены транзакции
 
   @Prop({ type: [Object], default: [] })
@@ -107,7 +122,22 @@ export class Transaction {
   metadata?: Record<string, any>; // Дополнительные данные
 
   // Поля для отслеживания состояния чека
-  @Prop({ enum: Object.values(ReceiptState), default: ReceiptState.CREATED })
+  @Prop({
+    enum: [
+      ReceiptState.CREATED,
+      ReceiptState.FIRST_CHECK,
+      ReceiptState.DEBIT,
+      ReceiptState.CLOSE_TRANSACTION,
+      ReceiptState.PAID,
+      ReceiptState.HELD,
+      ReceiptState.HOLD_COMMAND,
+      ReceiptState.MANUAL_INTERVENTION,
+      ReceiptState.CANCEL_QUEUE,
+      ReceiptState.CLOSE_QUEUE,
+      ReceiptState.CANCELLED,
+    ],
+    default: ReceiptState.CREATED,
+  })
   receiptState?: ReceiptState; // Состояние чека
 
   @Prop({ default: null })

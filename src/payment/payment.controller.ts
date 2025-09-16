@@ -236,18 +236,10 @@ export class PaymentController {
             `Invalid merchant ID: ${merchantId}, expected: ${expectedMerchantId}`
           );
 
-          // For CheckPerformTransaction, allow order validation even with invalid merchant ID
-          // This is needed for proper Payme sandbox testing
-          if (callbackData.method === "CheckPerformTransaction") {
-            this.logger.log(
-              "Allowing CheckPerformTransaction with invalid merchant ID for order validation"
-            );
-            // Continue to method processing for order validation
-          } else {
-            return {
-              error: { code: -32504, message: "Authorization invalid" },
-            };
-          }
+          // Invalid merchant ID should always return authorization error
+          return {
+            error: { code: -32504, message: "Authorization invalid" },
+          };
         }
 
         // Validate signature
@@ -319,34 +311,18 @@ export class PaymentController {
         if (!isValidSignature) {
           this.logger.warn("Invalid signature in Payme callback");
 
-          // For CheckPerformTransaction, allow order validation even with invalid auth
-          // This is needed for proper Payme sandbox testing
-          if (callbackData.method === "CheckPerformTransaction") {
-            this.logger.log(
-              "Allowing CheckPerformTransaction with invalid auth for order validation"
-            );
-            // Continue to method processing for order validation
-          } else {
-            return {
-              error: { code: -32504, message: "Authorization invalid" },
-            };
-          }
+          // Invalid signature should always return authorization error
+          return {
+            error: { code: -32504, message: "Authorization invalid" },
+          };
         }
 
         this.logger.log("Authorization validated successfully");
       } catch (error) {
         this.logger.error("Error validating authorization:", error);
 
-        // For CheckPerformTransaction, allow order validation even with authorization errors
-        // This is needed for proper Payme sandbox testing
-        if (callbackData.method === "CheckPerformTransaction") {
-          this.logger.log(
-            "Allowing CheckPerformTransaction with authorization error for order validation"
-          );
-          // Continue to method processing for order validation
-        } else {
-          return { error: { code: -32504, message: "Authorization invalid" } };
-        }
+        // Authorization validation failed - return proper error code
+        return { error: { code: -32504, message: "Authorization invalid" } };
       }
 
       // Process the callback
@@ -382,6 +358,18 @@ export class PaymentController {
 
         if (result.error === "Invalid order status") {
           return { error: { code: -31055, message: "Invalid order status" } };
+        }
+
+        if (
+          result.error ===
+          "Another transaction is already processing this order"
+        ) {
+          return {
+            error: {
+              code: -31099,
+              message: "Another transaction is already processing this order",
+            },
+          };
         }
 
         if (result.error === "Authorization invalid") {

@@ -80,6 +80,29 @@ export class TransactionService {
   }
 
   /**
+   * Find transaction by account orderId (merchant order ID)
+   */
+  async findByAccountOrderId(
+    accountOrderId: string
+  ): Promise<TransactionDocument | null> {
+    return await this.transactionModel
+      .findOne({ "account.orderId": accountOrderId })
+      .exec();
+  }
+
+  /**
+   * Find recent transactions within specified hours
+   */
+  async findRecentTransactions(hours: number): Promise<TransactionDocument[]> {
+    const cutoffTime = new Date(Date.now() - hours * 60 * 60 * 1000);
+    return await this.transactionModel
+      .find({ createdAt: { $gte: cutoffTime } })
+      .sort({ createdAt: -1 })
+      .limit(10)
+      .exec();
+  }
+
+  /**
    * Find transaction by merchant transaction ID
    */
   async findByMerchantTransactionId(
