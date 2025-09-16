@@ -331,52 +331,65 @@ export class PaymentController {
       if (!result.success) {
         this.logger.error("Callback processing failed:", result.error);
 
-        // Return specific error codes based on the error type
-        if (result.error === "Invalid amount") {
-          return { error: { code: -31001, message: "Invalid amount" } };
+        // Handle object errors (from updated Payme service)
+        if (typeof result.error === "object" && result.error !== null) {
+          return { error: result.error };
         }
 
-        if (result.error === "Order not found") {
-          return { error: { code: -31050, message: "Order not found" } };
+        // Handle string errors (legacy support)
+        if (typeof result.error === "string") {
+          // Return specific error codes based on the error type
+          if (result.error === "Invalid amount") {
+            return { error: { code: -31001, message: "Invalid amount" } };
+          }
+
+          if (result.error === "Order not found") {
+            return { error: { code: -31050, message: "Order not found" } };
+          }
+
+          if (result.error === "Order already paid") {
+            return { error: { code: -31051, message: "Order already paid" } };
+          }
+
+          if (result.error === "Order is cancelled") {
+            return { error: { code: -31052, message: "Order is cancelled" } };
+          }
+
+          if (result.error === "Order failed") {
+            return { error: { code: -31053, message: "Order failed" } };
+          }
+
+          if (result.error === "Order is refunded") {
+            return { error: { code: -31054, message: "Order is refunded" } };
+          }
+
+          if (result.error === "Invalid order status") {
+            return { error: { code: -31055, message: "Invalid order status" } };
+          }
+
+          if (
+            result.error ===
+            "Another transaction is already processing this order"
+          ) {
+            return {
+              error: {
+                code: -31099,
+                message: "Another transaction is already processing this order",
+              },
+            };
+          }
+
+          if (result.error === "Authorization invalid") {
+            return {
+              error: { code: -32504, message: "Authorization invalid" },
+            };
+          }
+
+          return { error: { code: -31000, message: result.error } };
         }
 
-        if (result.error === "Order already paid") {
-          return { error: { code: -31051, message: "Order already paid" } };
-        }
-
-        if (result.error === "Order is cancelled") {
-          return { error: { code: -31052, message: "Order is cancelled" } };
-        }
-
-        if (result.error === "Order failed") {
-          return { error: { code: -31053, message: "Order failed" } };
-        }
-
-        if (result.error === "Order is refunded") {
-          return { error: { code: -31054, message: "Order is refunded" } };
-        }
-
-        if (result.error === "Invalid order status") {
-          return { error: { code: -31055, message: "Invalid order status" } };
-        }
-
-        if (
-          result.error ===
-          "Another transaction is already processing this order"
-        ) {
-          return {
-            error: {
-              code: -31099,
-              message: "Another transaction is already processing this order",
-            },
-          };
-        }
-
-        if (result.error === "Authorization invalid") {
-          return { error: { code: -32504, message: "Authorization invalid" } };
-        }
-
-        return { error: { code: -31000, message: result.error } };
+        // Fallback for unexpected error types
+        return { error: { code: -31000, message: "Unknown error" } };
       }
 
       // Handle successful payment - Payme uses PerformTransaction method

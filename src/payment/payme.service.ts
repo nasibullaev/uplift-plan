@@ -276,9 +276,11 @@ export class PaymeService {
   /**
    * Handle Payme callback
    */
-  async handleCallback(
-    callbackData: PaymeCallbackData
-  ): Promise<{ success: boolean; error?: string; result?: any }> {
+  async handleCallback(callbackData: PaymeCallbackData): Promise<{
+    success: boolean;
+    error?: string | { code: number; message: string };
+    result?: any;
+  }> {
     try {
       const { id, method, params } = callbackData;
 
@@ -713,12 +715,31 @@ export class PaymeService {
         `Transaction ${id} found with state ${transaction.state}`
       );
 
+      // According to Payme specification, when transaction is cancelled (state -2),
+      // perform_time should be 0, not the actual perform_time value
+      let performTime = 0;
+      if (transaction.state === TransactionState.PERFORMED) {
+        // perform_time is now stored in milliseconds, so return it directly
+        performTime = transaction.perform_time || 0;
+      } else if (
+        transaction.state === TransactionState.CANCELLED_AFTER_PERFORMED
+      ) {
+        // For cancelled after performed transactions, perform_time should be 0
+        performTime = 0;
+      } else if (transaction.state === TransactionState.CREATED) {
+        // For created transactions, perform_time should be 0
+        performTime = 0;
+      } else if (transaction.state === TransactionState.CANCELLED) {
+        // For cancelled transactions, perform_time should be 0
+        performTime = 0;
+      }
+
       return {
         success: true,
         result: {
           create_time: transaction.create_time * 1000, // Convert to milliseconds
-          perform_time: (transaction.perform_time || 0) * 1000, // Convert to milliseconds
-          cancel_time: (transaction.cancel_time || 0) * 1000, // Convert to milliseconds
+          perform_time: performTime,
+          cancel_time: transaction.cancel_time || 0, // cancel_time is now stored in milliseconds
           transaction: id, // Use the same transaction ID as passed in the request (consistent with PerformTransaction)
           state: transaction.state,
           reason: transaction.reason || null,
@@ -736,9 +757,11 @@ export class PaymeService {
   /**
    * Handle perform transaction callback
    */
-  private async handlePerformTransaction(
-    params: any
-  ): Promise<{ success: boolean; error?: string; result?: any }> {
+  private async handlePerformTransaction(params: any): Promise<{
+    success: boolean;
+    error?: string | { code: number; message: string };
+    result?: any;
+  }> {
     const { id } = params;
 
     this.logger.log(`Performing transaction ${id}`);
@@ -750,27 +773,89 @@ export class PaymeService {
         this.logger.error(`Transaction ${id} not found`);
         return {
           success: false,
-          error: "Transaction not found",
+          error: {
+            code: -31003,
+            message: "Транзакция не найдена",
+          },
         };
       }
 
-      // Check if transaction is in correct state
+      // Handle idempotency: if transaction is already PERFORMED, return the same result
+      if (transaction.state === TransactionState.PERFORMED) {
+        this.logger.log(
+          `Transaction ${id} is already PERFORMED, returning same result for idempotency`
+        );
+
+        // Ensure we have a valid perform_time for idempotency
+        if (!transaction.perform_time) {
+          this.logger.error(
+            `Transaction ${id} is PERFORMED but has no perform_time stored`
+          );
+          return {
+            success: false,
+            error: {
+              code: -31000,
+              message: "Transaction state inconsistent",
+            },
+          };
+        }
+
+        // Return the exact same perform_time that was stored (already in milliseconds)
+        const performTimeMilliseconds = transaction.perform_time;
+
+        this.logger.log(
+          `Returning stored perform_time: ${performTimeMilliseconds} for transaction ${id}`
+        );
+
+        return {
+          success: true,
+          result: {
+            transaction: id,
+            perform_time: performTimeMilliseconds,
+            state: TransactionState.PERFORMED,
+          },
+        };
+      }
+
+      // Check if transaction is in correct state for performing
       if (transaction.state !== TransactionState.CREATED) {
         this.logger.error(
           `Transaction ${id} is not in CREATED state, current state: ${transaction.state}`
         );
+
+        // Return specific Payme error codes based on transaction state
+        let errorCode: number;
+        let errorMessage: string;
+
+        switch (transaction.state) {
+          case TransactionState.CANCELLED:
+          case TransactionState.CANCELLED_AFTER_PERFORMED:
+            errorCode = -31008; // Cannot perform operation
+            errorMessage = "Невозможно выполнить операцию";
+            break;
+          default:
+            errorCode = -31000; // General error
+            errorMessage = "Transaction is not in correct state for performing";
+        }
+
         return {
           success: false,
-          error: "Transaction is not in correct state for performing",
+          error: {
+            code: errorCode,
+            message: errorMessage,
+          },
         };
       }
 
-      // Update transaction state to PERFORMED
-      const performTime = Math.floor(Date.now() / 1000); // Store in seconds for consistency
+      // Calculate perform_time in milliseconds for idempotency
+      const performTimeMilliseconds = Date.now();
+      const performTimeSeconds = Math.floor(performTimeMilliseconds / 1000);
+
+      // Update transaction state to PERFORMED (store milliseconds for consistency)
       await this.transactionService.updateTransactionState(
         id,
         TransactionState.PERFORMED,
-        performTime
+        performTimeMilliseconds
       );
 
       // Update order status to PAID
@@ -783,10 +868,7 @@ export class PaymeService {
       }
 
       this.logger.log(`Transaction ${id} performed successfully`);
-
-      // Calculate perform_time in milliseconds directly
-      const performTimeMilliseconds = Date.now();
-      this.logger.log(`performTime in seconds: ${performTime}`);
+      this.logger.log(`performTime in seconds: ${performTimeSeconds}`);
       this.logger.log(`performTimeMilliseconds: ${performTimeMilliseconds}`);
 
       return {
@@ -837,28 +919,35 @@ export class PaymeService {
           success: true,
           result: {
             transaction: id,
-            cancel_time: (transaction.cancel_time || 0) * 1000, // Convert to milliseconds
+            cancel_time: transaction.cancel_time || 0, // cancel_time is now stored in milliseconds
             state: transaction.state,
           },
         };
       }
 
-      // Determine cancellation state based on current state
+      // Determine cancellation state based on reason code
       let cancelState: TransactionState;
-      if (transaction.state === TransactionState.PERFORMED) {
+      let finalReason: TransactionReason;
+
+      if (reason === 5) {
+        // Reason 5 (REFUND) should result in CANCELLED_AFTER_PERFORMED (-2)
         cancelState = TransactionState.CANCELLED_AFTER_PERFORMED;
+        finalReason = TransactionReason.REFUND;
       } else {
+        // Other reasons (including 3) should result in CANCELLED (-1)
         cancelState = TransactionState.CANCELLED;
+        finalReason =
+          (reason as TransactionReason) || TransactionReason.TRANSACTION_ERROR;
       }
 
       // Update transaction state
-      const cancelTime = Math.floor(Date.now() / 1000); // Store in seconds for consistency
+      const cancelTime = Date.now(); // Store in milliseconds for consistency
       await this.transactionService.updateTransactionState(
         id,
         cancelState,
         undefined,
         cancelTime,
-        reason as TransactionReason
+        finalReason
       );
 
       // Update order status to CANCELLED
@@ -876,7 +965,7 @@ export class PaymeService {
         success: true,
         result: {
           transaction: id,
-          cancel_time: cancelTime * 1000, // Convert to milliseconds for Payme specification
+          cancel_time: cancelTime, // cancelTime is already in milliseconds
           state: cancelState,
         },
       };
@@ -953,8 +1042,8 @@ export class PaymeService {
         amount: tx.amount,
         account: tx.account,
         create_time: tx.create_time * 1000, // Convert to milliseconds
-        perform_time: (tx.perform_time || 0) * 1000, // Convert to milliseconds
-        cancel_time: (tx.cancel_time || 0) * 1000, // Convert to milliseconds
+        perform_time: tx.perform_time || 0, // perform_time is now stored in milliseconds
+        cancel_time: tx.cancel_time || 0, // cancel_time is now stored in milliseconds
         transaction: tx.id,
         state: tx.state,
         reason: tx.reason || null,

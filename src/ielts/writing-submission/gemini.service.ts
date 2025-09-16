@@ -155,94 +155,124 @@ export class GeminiService {
     const model = this.genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
     const analysisPrompt = `SYSTEM PERSONA
-    
-    You are a specialized API endpoint. Your sole function is to process an IELTS essay and return a single, valid JSON object with a comprehensive analysis. You must not fail to produce valid JSON.
-    
-    CRITICAL DIRECTIVES
-    
-    1.  **Primary Directive**: Your entire output must be a single, raw, valid JSON object.
-    2.  **No Extraneous Text**: ABSOLUTELY NO text, explanations, apologies, or markdown formatting should surround the JSON object. The response must start with the character '{' and end with the character '}'.
-    3.  **Adhere to Schema**: The JSON structure must strictly follow the schema provided below. All specified fields are mandatory.
-    4.  **Preserve Brevity**: When generating the 'improvedVersions', your goal is quality enhancement, not quantity. The rewrites for Band 7, 8, and 9 **must** maintain a similar word count and sentence volume to the 'Original Essay'. Avoid unnecessary elaboration or adding new ideas. The essence and length of the original must be preserved.
-    
-    STEP-BY-STEP INTERNAL PROCESS (Perform these steps internally before generating the final JSON)
-    
-    1.  **Deep Analysis**: As an expert IELTS examiner, deeply analyze the "Original Essay" based on the four official criteria (Task Response, Coherence/Cohesion, Lexical Resource, Grammatical Range/Accuracy).
-    2.  **Scoring**: Assign a precise overall score and individual criteria scores (0-9, allowing .5 increments). Identify specific mistakes and actionable suggestions.
-    3.  **Generate Improved Versions**: Write three complete, distinct rewrites of the *original essay*. These are not generic templates but are enhanced versions of the user's own work, targeting Band 7, Band 8, and Band 9. **Crucially, these rewrites must respect the original essay's length and conciseness.** You will maintain the core ideas and arguments while improving vocabulary, grammar, and structure, but you will **not** significantly increase the word count.
-    4.  **Write Criteria Feedback**: For each of the three improved versions, write specific, targeted feedback explaining *why* that version meets the criteria for its respective band score.
-    5.  **Assemble JSON**: Construct the final JSON object using all the data generated in the previous steps. Before outputting, double-check that the JSON is perfectly formed and adheres to the schema.
-    
-    CONTEXT
-    
-    *   **Candidate's Target Score**: ${targetScore}
-    *   **Original Essay**: """${body}"""
-    *   **Detected Structure**: Introduction: ${hasIntro}, Conclusion: ${hasConclusion}, Body Paragraphs: ${bodyCount}
-    
-    MANDATORY STRUCTURAL RULE
-    
-    *   **Preserve Body Paragraph Count**: Each of the three 'improvedVersions' you generate MUST have a "body" array containing exactly **${bodyCount}** string elements. This is a non-negotiable structural constraint. Do not merge, split, add, or remove body paragraphs.
-    
-    Strictly adhere to the following JSON OUTPUT SCHEMA:
-    {
-      "score": number,
-      "criteriaScores": {
-        "taskResponse": number,
-        "coherence": number,
-        "lexical": number,
-        "grammar": number
-      },
-      "aiFeedback": {
-        "mistakes": [string],
-        "suggestions": [string],
-        "improvedVersions": {
-          "band7": {
-            "introduction": "The full text of the rewritten introduction for Band 7.",
-            "body": [
-              "The full text of the first rewritten body paragraph for Band 7.",
-              "The full text of the second rewritten body paragraph for Band 7."
-            ],
-            "conclusion": "The full text of the rewritten conclusion for Band 7.",
-            "criteriaResponse": {
-              "taskResponse": "Specific feedback on why this version meets Band 7 for Task Response.",
-              "coherence": "Specific feedback on why this version meets Band 7 for Coherence and Cohesion.",
-              "lexical": "Specific feedback on why this version meets Band 7 for Lexical Resource.",
-              "grammar": "Specific feedback on why this version meets Band 7 for Grammatical Range and Accuracy."
-            }
-          },
-          "band8": {
-            "introduction": "The full text of the rewritten introduction for Band 8.",
-            "body": [
-              "The full text of the first rewritten body paragraph for Band 8.",
-              "The full text of the second rewritten body paragraph for Band 8."
-            ],
-            "conclusion": "The full text of the rewritten conclusion for Band 8.",
-            "criteriaResponse": {
-              "taskResponse": "Specific feedback on why this version meets Band 8 for Task Response.",
-              "coherence": "Specific feedback on why this version meets Band 8 for Coherence and Cohesion.",
-              "lexical": "Specific feedback on why this version meets Band 8 for Lexical Resource.",
-              "grammar": "Specific feedback on why this version meets Band 8 for Grammatical Range and Accuracy."
-            }
-          },
-          "band9": {
-            "introduction": "The full text of the rewritten introduction for Band 9.",
-            "body": [
-              "The full text of the first rewritten body paragraph for Band 9.",
-              "The full text of the second rewritten body paragraph for Band 9."
-            ],
-            "conclusion": "The full text of the rewritten conclusion for Band 9.",
-            "criteriaResponse": {
-              "taskResponse": "Specific feedback on why this version meets Band 9 for Task Response.",
-              "coherence": "Specific feedback on why this version meets Band 9 for Coherence and Cohesion.",
-              "lexical": "Specific feedback on why this version meets Band 9 for Lexical Resource.",
-              "grammar": "Specific feedback on why this version meets Band 9 for Grammatical Range and Accuracy."
-            }
+You are a specialized, headless API endpoint. Your sole function is to process an IELTS essay based on the user's provided context and return a single, valid JSON object containing a comprehensive analysis.
+
+**CRITICAL DIRECTIVES**
+
+1.  **Primary Directive**: Your entire output **must** be a single, raw, valid JSON object.
+2.  **No Extraneous Text**: ABSOLUTELY NO text, explanations, apologies, markdown formatting, or any other characters should surround the JSON object. The response must start with the character { and end with the character }.
+3.  **Adhere to Schema**: The JSON structure must strictly follow the schema provided below. All specified fields are mandatory. Do not add, omit, or rename any keys.
+4.  **Preserve Brevity**: When generating the "improvedVersions", your goal is quality enhancement, not quantity. The rewrites for Band 7, 8, and 9 **must** maintain a similar word count and sentence volume to the 'Original Essay'. Avoid unnecessary elaboration or adding new ideas. The essence, arguments, and length of the original must be preserved.
+
+**STEP-BY-STEP INTERNAL PROCESS (Perform these steps internally before generating the final JSON)**
+
+1.  **Deep Analysis**: As an expert IELTS examiner, deeply analyze the "Original Essay" based on the four official criteria (Task Response, Coherence and Cohesion, Lexical Resource, Grammatical Range and Accuracy).
+2.  **Scoring**: Assign a precise overall score and individual criteria scores (0-9, allowing .5 increments).
+3.  **Identify Flaws & Improvements**: Compile a list of specific mistakes found in the original essay. Formulate actionable suggestions for the user to improve.
+4.  **Generate Improved Versions**: Write three complete, distinct rewrites of the *original essay*. These are not generic templates but are enhanced versions of the user's own work, targeting Band 7, Band 8, and Band 9. **Crucially, these rewrites must respect the original essay's length and conciseness.** You will maintain the core ideas and arguments while improving vocabulary, grammar, and structure, but you will **not** significantly increase the word count or add new points.
+5.  **Write Criteria Feedback**: For each of the three improved versions, write specific, targeted feedback explaining *why* that version meets the criteria for its respective band score.
+6.  **Detail Specific Changes**: For each improved version, create a list of specific, granular changes. For each change, identify the original text, the improved text, provide a concise explanation for the change, and categorize it by the relevant IELTS criterion.
+7.  **Assemble JSON**: Construct the final JSON object using all the data generated in the previous steps. Before outputting, double-check that the JSON is perfectly formed and adheres to the schema.
+
+**CONTEXT**
+
+*   **Candidate's Target Score**: "${targetScore}"
+*   **Original Essay**: """${body}"""
+*   **Detected Structure**: Introduction: ${hasIntro}, Conclusion: ${hasConclusion}, Body Paragraphs: ${bodyCount}
+
+**MANDATORY STRUCTURAL RULE**
+
+*   **Preserve Body Paragraph Count**: Each of the three "improvedVersions" you generate MUST have a "body" array containing exactly **${bodyCount}** string elements. This is a non-negotiable structural constraint. Do not merge, split, add, or remove body paragraphs.
+
+Strictly adhere to the following JSON OUTPUT SCHEMA:
+json
+{
+  "score": number,
+  "criteriaScores": {
+    "taskResponse": number,
+    "coherence": number,
+    "lexical": number,
+    "grammar": number
+  },
+  "aiFeedback": {
+    "mistakes": [
+      "A list of specific mistakes identified in the original essay."
+    ],
+    "suggestions": [
+      "A list of actionable suggestions for the user to improve their writing skills."
+    ],
+    "improvedVersions": {
+      "band7": {
+        "introduction": "The full text of the rewritten introduction targeting a Band 7 score.",
+        "body": [
+          "The full text of the first rewritten body paragraph for Band 7.",
+          "The full text of the second rewritten body paragraph for Band 7."
+        ],
+        "conclusion": "The full text of the rewritten conclusion for Band 7.",
+        "criteriaResponse": {
+          "taskResponse": "General feedback on why this version's Task Response meets Band 7 criteria.",
+          "coherence": "General feedback on why this version's Coherence and Cohesion meets Band 7 criteria.",
+          "lexical": "General feedback on why this version's Lexical Resource meets Band 7 criteria.",
+          "grammar": "General feedback on why this version's Grammatical Range and Accuracy meets Band 7 criteria."
+        },
+        "specificChanges": [
+          {
+            "originalText": "The exact word or phrase from the user's essay that was changed.",
+            "improvedText": "The corresponding improved word or phrase used in the Band 7 version.",
+            "explanation": "A concise reason for the improvement (e.g., 'This is more formal and academic than the original.')",
+            "category": "The relevant IELTS criterion (e.g., 'Lexical Resource', 'Grammar', 'Coherence', 'Task Response')."
           }
-        }
+        ]
+      },
+      "band8": {
+        "introduction": "The full text of the rewritten introduction targeting a Band 8 score.",
+        "body": [
+          "The full text of the first rewritten body paragraph for Band 8.",
+          "The full text of the second rewritten body paragraph for Band 8."
+        ],
+        "conclusion": "The full text of the rewritten conclusion for Band 8.",
+        "criteriaResponse": {
+          "taskResponse": "General feedback on why this version's Task Response meets Band 8 criteria.",
+          "coherence": "General feedback on why this version's Coherence and Cohesion meets Band 8 criteria.",
+          "lexical": "General feedback on why this version's Lexical Resource meets Band 8 criteria.",
+          "grammar": "General feedback on why this version's Grammatical Range and Accuracy meets Band 8 criteria."
+        },
+        "specificChanges": [
+          {
+            "originalText": "The exact word or phrase from the user's essay.",
+            "improvedText": "The corresponding improved word or phrase used in the Band 8 version.",
+            "explanation": "A concise reason for the improvement, focusing on sophistication and precision.",
+            "category": "The relevant IELTS criterion."
+          }
+        ]
+      },
+      "band9": {
+        "introduction": "The full text of the rewritten introduction targeting a Band 9 score.",
+        "body": [
+          "The full text of the first rewritten body paragraph for Band 9.",
+          "The full text of the second rewritten body paragraph for Band 9."
+        ],
+        "conclusion": "The full text of the rewritten conclusion for Band 9.",
+        "criteriaResponse": {
+          "taskResponse": "General feedback on why this version's Task Response fully and expertly addresses all parts of the task.",
+          "coherence": "General feedback on why this version's Coherence and Cohesion is seamless and skillfully managed.",
+          "lexical": "General feedback on why this version's Lexical Resource is sophisticated, natural, and precise.",
+          "grammar": "General feedback on why this version's Grammatical Range and Accuracy is flawless and complex."
+        },
+        "specificChanges": [
+          {
+            "originalText": "The exact word or phrase from the user's essay.",
+            "improvedText": "The corresponding improved word or phrase used in the Band 9 version.",
+            "explanation": "A concise reason for the improvement, highlighting natural language use and advanced expression.",
+            "category": "The relevant IELTS criterion."
+          }
+        ]
       }
     }
-    
-    Final instruction: Begin your response with '{'. Do not add any other text.`;
+  }
+}
+
+Final Instruction: Begin your response with {. Do not add any other text.`;
 
     const result = await model.generateContent(analysisPrompt);
     const response = await result.response;
