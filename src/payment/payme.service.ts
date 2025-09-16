@@ -2,6 +2,17 @@ import { Injectable, BadRequestException, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import axios from "axios";
 import * as crypto from "crypto-js";
+import { TransactionService } from "../transactions/transaction.service";
+import { OrderService } from "../orders/order.service";
+import { UserPlanService } from "../user-plan/user-plan.service";
+import { PlanService } from "../plan/plan.service";
+import {
+  TransactionState,
+  TransactionReason,
+  ReceiptState,
+  Account,
+} from "../transactions/schemas/transaction.schema";
+import { OrderStatus } from "../orders/schemas/order.schema";
 
 export interface PaymePaymentRequest {
   orderId: string;
@@ -51,7 +62,13 @@ export class PaymeService {
   private readonly baseUrl: string;
   private readonly callbackUrl: string;
 
-  constructor(private configService: ConfigService) {
+  constructor(
+    private configService: ConfigService,
+    private transactionService: TransactionService,
+    private orderService: OrderService,
+    private userPlanService: UserPlanService,
+    private planService: PlanService
+  ) {
     this.merchantId = this.configService.get<string>("PAYME_MERCHANT_ID");
     this.merchantKey = this.configService.get<string>("PAYME_MERCHANT_KEY");
     this.baseUrl =
@@ -257,7 +274,7 @@ export class PaymeService {
    */
   async handleCallback(
     callbackData: PaymeCallbackData
-  ): Promise<{ success: boolean; error?: string }> {
+  ): Promise<{ success: boolean; error?: string; result?: any }> {
     try {
       const { id, method, params } = callbackData;
 
@@ -404,26 +421,142 @@ export class PaymeService {
    */
   private async handleCheckPerformTransaction(
     params: any
-  ): Promise<{ success: boolean; error?: string }> {
+  ): Promise<{ success: boolean; error?: string; result?: any }> {
     const { account, amount } = params;
-    const orderId = account.orderId;
+    const orderId = account?.orderId;
 
-    this.logger.log(
-      `Checking transaction for order ${orderId} with amount ${amount}`
-    );
+    this.logger.log(`=== CheckPerformTransaction START ===`);
+    this.logger.log(`Params:`, JSON.stringify(params, null, 2));
+    this.logger.log(`Order ID: ${orderId}, Amount: ${amount}`);
+
+    if (!orderId) {
+      this.logger.error(`Missing orderId in account params`);
+      return {
+        success: false,
+        error: "Missing orderId",
+      };
+    }
 
     // Validate amount using the centralized validation method
     const amountValidation = this.validateAmount(amount, orderId);
+    this.logger.log(`Amount validation result:`, amountValidation);
+
     if (!amountValidation.valid) {
+      this.logger.log(`Amount validation failed: ${amountValidation.error}`);
       return {
         success: false,
         error: amountValidation.error,
       };
     }
 
-    // Here you should validate the order exists and amount matches
-    // For now, we'll return success if amount validation passes
-    return { success: true };
+    // Validate that the order exists and amount matches
+    try {
+      this.logger.log(`Looking for order with ID: ${orderId}`);
+
+      // Check if order exists
+      const order = await this.orderService.findByOrderId(orderId);
+      this.logger.log(
+        `Order lookup result:`,
+        order ? `Found order with status ${order.status}` : `Order not found`
+      );
+
+      if (!order) {
+        this.logger.log(`Order ${orderId} not found - returning error`);
+        return {
+          success: false,
+          error: "Order not found",
+        };
+      }
+
+      // Check if there's already a transaction for this order
+      const existingTransaction = await this.transactionService.findByOrderId(
+        order._id.toString()
+      );
+      this.logger.log(
+        `Existing transaction:`,
+        existingTransaction
+          ? `Found transaction ${existingTransaction.id}`
+          : `No existing transaction`
+      );
+
+      // Check order status and return appropriate response
+      this.logger.log(`Checking order status: ${order.status}`);
+
+      switch (order.status) {
+        case "PENDING":
+        case "CREATED":
+          // Order is waiting for payment - allow transaction creation
+          this.logger.log(
+            `Order ${orderId} is waiting for payment - allowing transaction`
+          );
+          return {
+            success: true,
+            result: {
+              allow: true,
+              detail: {
+                receipt_type: 0, // 0 - for goods, 1 - for services
+                items: [
+                  {
+                    title: order.description || "Plan Upgrade",
+                    price: order.amount,
+                    count: 1,
+                    code: orderId,
+                    package_code: orderId,
+                    vat_percent: 0,
+                  },
+                ],
+              },
+            },
+          };
+
+        case "PAID":
+          // Order is already paid - return error
+          this.logger.log(`Order ${orderId} is already paid - returning error`);
+          return {
+            success: false,
+            error: "Order already paid",
+          };
+
+        case "CANCELLED":
+          // Order is cancelled - return error
+          this.logger.log(`Order ${orderId} is cancelled - returning error`);
+          return {
+            success: false,
+            error: "Order is cancelled",
+          };
+
+        case "FAILED":
+          // Order failed - return error
+          this.logger.log(`Order ${orderId} failed - returning error`);
+          return {
+            success: false,
+            error: "Order failed",
+          };
+
+        case "REFUNDED":
+          // Order is refunded - return error
+          this.logger.log(`Order ${orderId} is refunded - returning error`);
+          return {
+            success: false,
+            error: "Order is refunded",
+          };
+
+        default:
+          this.logger.log(
+            `Order ${orderId} has unknown status: ${order.status} - returning error`
+          );
+          return {
+            success: false,
+            error: "Invalid order status",
+          };
+      }
+    } catch (error) {
+      this.logger.error(`Error checking order ${orderId}:`, error);
+      return {
+        success: false,
+        error: "Internal server error",
+      };
+    }
   }
 
   /**
@@ -431,7 +564,7 @@ export class PaymeService {
    */
   private async handleCreateTransaction(
     params: any
-  ): Promise<{ success: boolean; error?: string }> {
+  ): Promise<{ success: boolean; error?: string; result?: any }> {
     const { id, account, amount, time } = params;
     const orderId = account.orderId;
 
@@ -448,13 +581,72 @@ export class PaymeService {
       };
     }
 
-    // Here you should create the transaction in your database
-    // This is called when Payme creates a new transaction
+    try {
+      // Check if transaction already exists
+      const existingTransaction =
+        await this.transactionService.findByPaymeId(id);
+      if (existingTransaction) {
+        this.logger.log(`Transaction ${id} already exists`);
+        return {
+          success: true,
+          result: {
+            create_time: existingTransaction.create_time,
+            transaction: existingTransaction.id,
+            state: existingTransaction.state,
+          },
+        };
+      }
 
-    this.logger.log(
-      `Transaction creation validation passed for order ${orderId}`
-    );
-    return { success: true };
+      // Find the order to get additional information
+      const order = await this.orderService.findByOrderId(orderId);
+      if (!order) {
+        this.logger.error(`Order ${orderId} not found`);
+        return {
+          success: false,
+          error: "Order not found",
+        };
+      }
+
+      // Create account object for transaction
+      const transactionAccount: Account = {
+        orderId: orderId,
+        userId: order.userId.toString(),
+      };
+
+      // Create transaction in database
+      const createTime = Math.floor(Date.now() / 1000);
+      const transaction = await this.transactionService.createTransaction(
+        id,
+        time,
+        amount,
+        transactionAccount,
+        createTime,
+        order._id.toString(),
+        order.userId,
+        order.planId,
+        orderId,
+        order.description
+      );
+
+      this.logger.log(
+        `Transaction ${id} created successfully for order ${orderId}`
+      );
+
+      return {
+        success: true,
+        result: {
+          create_time: createTime,
+          transaction: id,
+          state: TransactionState.CREATED,
+        },
+      };
+    } catch (error) {
+      this.logger.error(`Error creating transaction ${id}:`, error);
+      return {
+        success: false,
+        error: "Internal server error",
+      };
+    }
   }
 
   /**
@@ -462,15 +654,44 @@ export class PaymeService {
    */
   private async handleCheckTransaction(
     params: any
-  ): Promise<{ success: boolean; error?: string }> {
+  ): Promise<{ success: boolean; error?: string; result?: any }> {
     const { id } = params;
 
     this.logger.log(`Checking transaction ${id}`);
 
-    // Here you should return transaction details from your database
-    // This is called when Payme wants to check transaction status
+    try {
+      // Find transaction in database
+      const transaction = await this.transactionService.findByPaymeId(id);
+      if (!transaction) {
+        this.logger.error(`Transaction ${id} not found`);
+        return {
+          success: false,
+          error: "Transaction not found",
+        };
+      }
 
-    return { success: true };
+      this.logger.log(
+        `Transaction ${id} found with state ${transaction.state}`
+      );
+
+      return {
+        success: true,
+        result: {
+          create_time: transaction.create_time,
+          perform_time: transaction.perform_time || 0,
+          cancel_time: transaction.cancel_time || 0,
+          transaction: transaction.id,
+          state: transaction.state,
+          reason: transaction.reason || null,
+        },
+      };
+    } catch (error) {
+      this.logger.error(`Error checking transaction ${id}:`, error);
+      return {
+        success: false,
+        error: "Internal server error",
+      };
+    }
   }
 
   /**
@@ -478,15 +699,67 @@ export class PaymeService {
    */
   private async handlePerformTransaction(
     params: any
-  ): Promise<{ success: boolean; error?: string }> {
+  ): Promise<{ success: boolean; error?: string; result?: any }> {
     const { id } = params;
 
     this.logger.log(`Performing transaction ${id}`);
 
-    // Here you should update your database to mark the payment as completed
-    // This will be handled by the payment controller
+    try {
+      // Find transaction in database
+      const transaction = await this.transactionService.findByPaymeId(id);
+      if (!transaction) {
+        this.logger.error(`Transaction ${id} not found`);
+        return {
+          success: false,
+          error: "Transaction not found",
+        };
+      }
 
-    return { success: true };
+      // Check if transaction is in correct state
+      if (transaction.state !== TransactionState.CREATED) {
+        this.logger.error(
+          `Transaction ${id} is not in CREATED state, current state: ${transaction.state}`
+        );
+        return {
+          success: false,
+          error: "Transaction is not in correct state for performing",
+        };
+      }
+
+      // Update transaction state to PERFORMED
+      const performTime = Math.floor(Date.now() / 1000);
+      await this.transactionService.updateTransactionState(
+        id,
+        TransactionState.PERFORMED,
+        performTime
+      );
+
+      // Update order status to PAID
+      if (transaction.orderId) {
+        await this.orderService.updateOrderStatus(
+          transaction.account.orderId,
+          OrderStatus.PAID,
+          id // transaction ID
+        );
+      }
+
+      this.logger.log(`Transaction ${id} performed successfully`);
+
+      return {
+        success: true,
+        result: {
+          transaction: id,
+          perform_time: performTime,
+          state: TransactionState.PERFORMED,
+        },
+      };
+    } catch (error) {
+      this.logger.error(`Error performing transaction ${id}:`, error);
+      return {
+        success: false,
+        error: "Internal server error",
+      };
+    }
   }
 
   /**
@@ -494,14 +767,83 @@ export class PaymeService {
    */
   private async handleCancelTransaction(
     params: any
-  ): Promise<{ success: boolean; error?: string }> {
+  ): Promise<{ success: boolean; error?: string; result?: any }> {
     const { id, reason } = params;
 
     this.logger.log(`Cancelling transaction ${id}, reason: ${reason}`);
 
-    // Here you should update your database to mark the payment as cancelled
+    try {
+      // Find transaction in database
+      const transaction = await this.transactionService.findByPaymeId(id);
+      if (!transaction) {
+        this.logger.error(`Transaction ${id} not found`);
+        return {
+          success: false,
+          error: "Transaction not found",
+        };
+      }
 
-    return { success: true };
+      // Check if transaction can be cancelled
+      if (
+        transaction.state === TransactionState.CANCELLED ||
+        transaction.state === TransactionState.CANCELLED_AFTER_PERFORMED
+      ) {
+        this.logger.log(`Transaction ${id} is already cancelled`);
+        return {
+          success: true,
+          result: {
+            transaction: id,
+            cancel_time:
+              transaction.cancel_time || Math.floor(Date.now() / 1000),
+            state: transaction.state,
+          },
+        };
+      }
+
+      // Determine cancellation state based on current state
+      let cancelState: TransactionState;
+      if (transaction.state === TransactionState.PERFORMED) {
+        cancelState = TransactionState.CANCELLED_AFTER_PERFORMED;
+      } else {
+        cancelState = TransactionState.CANCELLED;
+      }
+
+      // Update transaction state
+      const cancelTime = Math.floor(Date.now() / 1000);
+      await this.transactionService.updateTransactionState(
+        id,
+        cancelState,
+        undefined,
+        cancelTime,
+        reason as TransactionReason
+      );
+
+      // Update order status to CANCELLED
+      if (transaction.orderId) {
+        await this.orderService.updateOrderStatus(
+          transaction.account.orderId,
+          OrderStatus.CANCELLED,
+          id // transaction ID
+        );
+      }
+
+      this.logger.log(`Transaction ${id} cancelled successfully`);
+
+      return {
+        success: true,
+        result: {
+          transaction: id,
+          cancel_time: cancelTime,
+          state: cancelState,
+        },
+      };
+    } catch (error) {
+      this.logger.error(`Error cancelling transaction ${id}:`, error);
+      return {
+        success: false,
+        error: "Internal server error",
+      };
+    }
   }
 
   /**
@@ -509,7 +851,7 @@ export class PaymeService {
    */
   private async handleGetStatement(
     params: any
-  ): Promise<{ success: boolean; error?: string }> {
+  ): Promise<{ success: boolean; error?: string; result?: any }> {
     const { from, to } = params;
 
     this.logger.log(`Getting statement from ${from} to ${to}`);
@@ -517,7 +859,12 @@ export class PaymeService {
     // Here you should return transaction history
     // For now, we'll return empty array
 
-    return { success: true };
+    return {
+      success: true,
+      result: {
+        transactions: [],
+      },
+    };
   }
 
   /**
@@ -525,15 +872,19 @@ export class PaymeService {
    */
   private async handleChangePassword(
     params: any
-  ): Promise<{ success: boolean; error?: string }> {
+  ): Promise<{ success: boolean; error?: string; result?: any }> {
     const { password } = params;
 
     this.logger.log(`Change password requested`);
 
-    // Here you should handle password change if needed
-    // For most implementations, this can be ignored or return success
+    // ChangePassword method should return error -32504 for invalid authorization
+    // This method is typically used for testing authorization validation
+    // In most implementations, this method should return an error to test proper authorization handling
 
-    return { success: true };
+    return {
+      success: false,
+      error: "Authorization invalid",
+    };
   }
 
   /**

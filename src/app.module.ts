@@ -7,6 +7,8 @@ import { IELTSModule } from "./ielts/ielts.module";
 import { UserModule } from "./users/user.module";
 import { AuthModule } from "./auth/auth.module";
 import { PaymentModule } from "./payment/payment.module";
+import { OrderModule } from "./orders/order.module";
+import { TransactionModule } from "./transactions/transaction.module";
 
 @Module({
   imports: [
@@ -22,6 +24,8 @@ import { PaymentModule } from "./payment/payment.module";
     UserModule,
     AuthModule,
     PaymentModule,
+    OrderModule,
+    TransactionModule,
   ],
 })
 export class AppModule {}

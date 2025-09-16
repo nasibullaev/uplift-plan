@@ -9,6 +9,9 @@ import {
   IELTSWritingSubmissionSchema,
 } from "../ielts/writing-submission/schemas/ielts-writing-submission.schema";
 import { User, UserSchema } from "../users/schemas/user.schema";
+import { OrderModule } from "../orders/order.module";
+import { PlanModule } from "../plan/plan.module";
+import { PaymentModule } from "../payment/payment.module";
 
 @Module({
   imports: [
@@ -21,6 +24,9 @@ import { User, UserSchema } from "../users/schemas/user.schema";
       },
       { name: User.name, schema: UserSchema },
     ]),
+    OrderModule,
+    PlanModule,
+    forwardRef(() => PaymentModule),
   ],
   controllers: [UserPlanController],
   providers: [UserPlanService],
