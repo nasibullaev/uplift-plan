@@ -1,175 +1,193 @@
-/**
- * Test script to verify CancelTransaction fix
- * This script demonstrates the expected behavior for the Payme CancelTransaction test case
- */
-
 const axios = require("axios");
 
-// Configuration
+// Test script for CancelTransaction method fix
 const BASE_URL = "http://localhost:3000/api/payments/payme/callback";
-const MERCHANT_ID = "your_merchant_id"; // Replace with actual merchant ID
-const MERCHANT_KEY = "your_merchant_key"; // Replace with actual merchant key
 
-// Test transaction ID (should be a real transaction ID from your database)
-const TEST_TRANSACTION_ID = "68c972fd20cfb2025b9edc0c";
+// Test data
+const testTransactionId = "68c9aad220cfb2025b9edc5c";
+const testOrderId = "order_test_123";
 
-// Generate signature for Payme requests
-function generateSignature(params, merchantKey) {
-  const crypto = require("crypto");
-  const data = JSON.stringify(params);
-  return crypto.createHmac("sha256", merchantKey).update(data).digest("hex");
-}
-
-// Create authorization header
-function createAuthHeader(merchantId, merchantKey, params) {
-  const signature = generateSignature(params, merchantKey);
-  const authString = `${merchantId}:${signature}`;
-  const base64Auth = Buffer.from(authString).toString("base64");
-  return `Basic ${base64Auth}`;
-}
+// Authorization header (you'll need to replace with actual credentials)
+const authHeader =
+  "Basic " + Buffer.from("merchant_id:merchant_key").toString("base64");
 
 async function testCancelTransaction() {
-  console.log("🧪 Testing CancelTransaction method...\n");
+  console.log("=== Testing CancelTransaction Method ===\n");
 
   try {
-    // Test 1: Cancel transaction with reason 5 (REFUND)
-    console.log("1️⃣ First CancelTransaction call (reason 5 - REFUND)");
-    const cancelParams1 = {
-      jsonrpc: "2.0",
-      id: 146226,
-      method: "CancelTransaction",
-      params: {
-        id: TEST_TRANSACTION_ID,
-        reason: 5,
+    // Step 1: Create a transaction first
+    console.log("1. Creating transaction...");
+    const createResponse = await axios.post(
+      BASE_URL,
+      {
+        jsonrpc: "2.0",
+        id: 146435,
+        method: "CreateTransaction",
+        params: {
+          id: testTransactionId,
+          account: {
+            orderId: testOrderId,
+          },
+          amount: 100000, // 1000 UZS in tiyin
+          time: Date.now(),
+        },
       },
-    };
-
-    const authHeader1 = createAuthHeader(
-      MERCHANT_ID,
-      MERCHANT_KEY,
-      cancelParams1
+      {
+        headers: {
+          Authorization: authHeader,
+          "Content-Type": "application/json",
+        },
+      }
     );
 
-    const response1 = await axios.post(BASE_URL, cancelParams1, {
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: authHeader1,
-      },
-    });
-
-    console.log("Response 1:", JSON.stringify(response1.data, null, 2));
-
-    // Expected: state should be -2 (CANCELLED_AFTER_PERFORMED)
-    if (response1.data.result && response1.data.result.state === -2) {
-      console.log(
-        "✅ First cancel call successful - transaction cancelled with state -2"
-      );
-    } else {
-      console.log(
-        "❌ First cancel call failed - unexpected state:",
-        response1.data.result?.state
-      );
-    }
-
-    console.log("\n2️⃣ Second CancelTransaction call (idempotency test)");
-
-    // Test 2: Repeat the same cancel request (should return same result)
-    const cancelParams2 = {
-      jsonrpc: "2.0",
-      id: 146227,
-      method: "CancelTransaction",
-      params: {
-        id: TEST_TRANSACTION_ID,
-        reason: 5,
-      },
-    };
-
-    const authHeader2 = createAuthHeader(
-      MERCHANT_ID,
-      MERCHANT_KEY,
-      cancelParams2
+    console.log(
+      "CreateTransaction Response:",
+      JSON.stringify(createResponse.data, null, 2)
     );
 
-    const response2 = await axios.post(BASE_URL, cancelParams2, {
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: authHeader2,
+    // Step 2: Perform the transaction
+    console.log("\n2. Performing transaction...");
+    const performResponse = await axios.post(
+      BASE_URL,
+      {
+        jsonrpc: "2.0",
+        id: 146436,
+        method: "PerformTransaction",
+        params: {
+          id: testTransactionId,
+        },
       },
-    });
-
-    console.log("Response 2:", JSON.stringify(response2.data, null, 2));
-
-    // Expected: same result as first call (idempotency)
-    if (
-      response1.data.result &&
-      response2.data.result &&
-      response1.data.result.cancel_time === response2.data.result.cancel_time &&
-      response1.data.result.state === response2.data.result.state
-    ) {
-      console.log(
-        "✅ Second cancel call successful - idempotency working correctly"
-      );
-    } else {
-      console.log("❌ Second cancel call failed - idempotency not working");
-    }
-
-    console.log("\n3️⃣ CheckTransaction call (verify perform_time is 0)");
-
-    // Test 3: Check transaction status
-    const checkParams = {
-      jsonrpc: "2.0",
-      id: 146228,
-      method: "CheckTransaction",
-      params: {
-        id: TEST_TRANSACTION_ID,
-      },
-    };
-
-    const authHeader3 = createAuthHeader(
-      MERCHANT_ID,
-      MERCHANT_KEY,
-      checkParams
+      {
+        headers: {
+          Authorization: authHeader,
+          "Content-Type": "application/json",
+        },
+      }
     );
 
-    const response3 = await axios.post(BASE_URL, checkParams, {
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: authHeader3,
+    console.log(
+      "PerformTransaction Response:",
+      JSON.stringify(performResponse.data, null, 2)
+    );
+
+    // Step 3: Cancel the transaction (reason 5 = REFUND)
+    console.log("\n3. Cancelling transaction with reason 5 (REFUND)...");
+    const cancelResponse = await axios.post(
+      BASE_URL,
+      {
+        jsonrpc: "2.0",
+        id: 146437,
+        method: "CancelTransaction",
+        params: {
+          id: testTransactionId,
+          reason: 5,
+        },
       },
-    });
+      {
+        headers: {
+          Authorization: authHeader,
+          "Content-Type": "application/json",
+        },
+      }
+    );
 
-    console.log("Response 3:", JSON.stringify(response3.data, null, 2));
+    console.log(
+      "CancelTransaction Response:",
+      JSON.stringify(cancelResponse.data, null, 2)
+    );
 
-    // Expected: perform_time should be 0 for cancelled transactions
-    if (response3.data.result && response3.data.result.perform_time === 0) {
-      console.log(
-        "✅ CheckTransaction successful - perform_time is 0 as expected"
-      );
-    } else {
-      console.log(
-        "❌ CheckTransaction failed - perform_time should be 0, got:",
-        response3.data.result?.perform_time
-      );
+    // Step 4: Check transaction status
+    console.log("\n4. Checking transaction status...");
+    const checkResponse = await axios.post(
+      BASE_URL,
+      {
+        jsonrpc: "2.0",
+        id: 146438,
+        method: "CheckTransaction",
+        params: {
+          id: testTransactionId,
+        },
+      },
+      {
+        headers: {
+          Authorization: authHeader,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    console.log(
+      "CheckTransaction Response:",
+      JSON.stringify(checkResponse.data, null, 2)
+    );
+
+    // Verify the fix
+    if (checkResponse.data.result) {
+      const result = checkResponse.data.result;
+      console.log("\n=== Verification ===");
+      console.log(`Transaction State: ${result.state}`);
+      console.log(`Perform Time: ${result.perform_time}`);
+      console.log(`Cancel Time: ${result.cancel_time}`);
+
+      if (result.state === -2 && result.perform_time > 0) {
+        console.log(
+          "✅ SUCCESS: CANCELLED_AFTER_PERFORMED transaction has correct perform_time"
+        );
+      } else if (result.state === -2 && result.perform_time === 0) {
+        console.log(
+          "❌ FAILED: CANCELLED_AFTER_PERFORMED transaction has perform_time = 0 (this was the bug)"
+        );
+      } else {
+        console.log("⚠️  UNEXPECTED: Transaction state is not -2");
+      }
     }
 
-    console.log("\n🎉 Test completed!");
+    // Step 5: Test idempotency - cancel the same transaction again
+    console.log(
+      "\n5. Testing idempotency - cancelling same transaction again..."
+    );
+    const cancelAgainResponse = await axios.post(
+      BASE_URL,
+      {
+        jsonrpc: "2.0",
+        id: 146439,
+        method: "CancelTransaction",
+        params: {
+          id: testTransactionId,
+          reason: 5,
+        },
+      },
+      {
+        headers: {
+          Authorization: authHeader,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    console.log(
+      "CancelTransaction (idempotency) Response:",
+      JSON.stringify(cancelAgainResponse.data, null, 2)
+    );
+
+    // Verify idempotency
+    if (cancelAgainResponse.data.result && cancelResponse.data.result) {
+      const firstCancel = cancelResponse.data.result;
+      const secondCancel = cancelAgainResponse.data.result;
+
+      if (
+        firstCancel.cancel_time === secondCancel.cancel_time &&
+        firstCancel.state === secondCancel.state
+      ) {
+        console.log("✅ SUCCESS: CancelTransaction is idempotent");
+      } else {
+        console.log("❌ FAILED: CancelTransaction is not idempotent");
+      }
+    }
   } catch (error) {
-    console.error(
-      "❌ Test failed with error:",
-      error.response?.data || error.message
-    );
+    console.error("Test failed:", error.response?.data || error.message);
   }
 }
 
 // Run the test
-if (require.main === module) {
-  console.log(
-    "⚠️  Please update MERCHANT_ID and MERCHANT_KEY in this script before running"
-  );
-  console.log("⚠️  Make sure TEST_TRANSACTION_ID exists in your database");
-  console.log("⚠️  Make sure your server is running on localhost:3000\n");
-
-  testCancelTransaction();
-}
-
-module.exports = { testCancelTransaction };
+testCancelTransaction();

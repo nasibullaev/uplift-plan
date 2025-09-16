@@ -163,11 +163,11 @@ export class TransactionService {
       lastProcessedAt: new Date(),
     };
 
-    if (performTime) {
+    if (performTime !== null && performTime !== undefined) {
       updateData.perform_time = performTime;
     }
 
-    if (cancelTime) {
+    if (cancelTime !== null && cancelTime !== undefined) {
       updateData.cancel_time = cancelTime;
     }
 

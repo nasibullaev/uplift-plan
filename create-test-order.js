@@ -125,7 +125,7 @@ async function createTestOrder(orderId) {
       existingOrder.planId = plan._id;
       existingOrder.paymentMethod = "Payme";
       existingOrder.amount = plan.price;
-      existingOrder.amountInTiyin = plan.price * 100; // Convert to tiyin
+      existingOrder.amountInTiyin = plan.price * 100; // Convert UZS to tiyin (1 UZS = 100 tiyin)
       existingOrder.description = `Upgrade to ${plan.title} plan`;
       existingOrder.status = "PENDING";
       await existingOrder.save();
@@ -140,7 +140,7 @@ async function createTestOrder(orderId) {
         planId: plan._id,
         paymentMethod: "Payme",
         amount: plan.price,
-        amountInTiyin: plan.price * 100, // Convert to tiyin
+        amountInTiyin: plan.price * 100, // Convert UZS to tiyin (1 UZS = 100 tiyin)
         description: `Upgrade to ${plan.title} plan`,
         status: "PENDING",
         returnUrl: "http://localhost:3000/payment/success",
@@ -156,7 +156,7 @@ async function createTestOrder(orderId) {
     console.log(`User ID: ${testUser._id}`);
     console.log(`Plan: ${plan.title}`);
     console.log(`Amount: ${plan.price} UZS`);
-    console.log(`Amount in Tiyin: ${plan.price * 100}`);
+    console.log(`Amount in Tiyin: ${plan.price * 100} (1 UZS = 100 tiyin)`);
     console.log("Payment Method: Payme");
     console.log("Status: PENDING");
     console.log("=====================================");
@@ -164,7 +164,9 @@ async function createTestOrder(orderId) {
       "\n📝 You can now use this order for Payme integration testing:"
     );
     console.log(`   - Order ID: ${orderId}`);
-    console.log(`   - Amount: ${plan.price * 100} tiyin (${plan.price} UZS)`);
+    console.log(
+      `   - Amount: ${plan.price * 100} tiyin (${plan.price} UZS) - 1 UZS = 100 tiyin`
+    );
     console.log("   - Payment Method: Payme");
     console.log(
       "\n🧪 Test the PerformTransaction idempotency with this order!"

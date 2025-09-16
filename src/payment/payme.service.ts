@@ -328,10 +328,10 @@ export class PaymeService {
   /**
    * Validate amount for Payme transactions
    */
-  validateAmount(
+  async validateAmount(
     amount: number,
     orderId: string
-  ): { valid: boolean; error?: string } {
+  ): Promise<{ valid: boolean; error?: string }> {
     // Validate amount type and basic constraints
     if (!amount || typeof amount !== "number" || amount <= 0) {
       this.logger.warn(`Invalid amount: ${amount} for order ${orderId}`);
@@ -355,24 +355,30 @@ export class PaymeService {
       return { valid: false, error: "Invalid amount" };
     }
 
-    // For testing purposes, reject specific invalid test amounts
-    const invalidTestAmounts = [1111111, 999999999, 0, -1000, 1]; // Known invalid test amounts
-    if (invalidTestAmounts.includes(amount)) {
-      this.logger.warn(`Invalid test amount: ${amount} for order ${orderId}`);
-      return { valid: false, error: "Invalid amount" };
-    }
+    // Validate against actual order amount
+    try {
+      const order = await this.orderService.findByOrderId(orderId);
+      if (!order) {
+        this.logger.warn(`Order not found: ${orderId}`);
+        return { valid: false, error: "Order not found" };
+      }
 
-    // Accept valid test amounts
-    const validTestAmounts = [50000, 100000, 200000, 500000]; // Common valid test amounts
-    if (validTestAmounts.includes(amount)) {
-      this.logger.log(`Valid test amount: ${amount} for order ${orderId}`);
+      // Check if the amount matches the order amount
+      if (amount !== order.amountInTiyin) {
+        this.logger.warn(
+          `Amount mismatch: requested ${amount} tiyin, order amount ${order.amountInTiyin} tiyin for order ${orderId}`
+        );
+        return { valid: false, error: "Invalid amount" };
+      }
+
+      this.logger.log(
+        `Amount validation passed for order ${orderId}: ${amount} tiyin`
+      );
       return { valid: true };
+    } catch (error) {
+      this.logger.error(`Error validating amount for order ${orderId}:`, error);
+      return { valid: false, error: "Internal error" };
     }
-
-    // For production, you would validate against your actual order amounts
-    // For now, we'll be more permissive for testing
-    this.logger.log(`Amount validation passed for order ${orderId}: ${amount}`);
-    return { valid: true };
   }
   generateSignature(params: any): string {
     const data = JSON.stringify(params);
@@ -444,7 +450,7 @@ export class PaymeService {
     }
 
     // Validate amount using the centralized validation method
-    const amountValidation = this.validateAmount(amount, orderId);
+    const amountValidation = await this.validateAmount(amount, orderId);
     this.logger.log(`Amount validation result:`, amountValidation);
 
     if (!amountValidation.valid) {
@@ -579,7 +585,7 @@ export class PaymeService {
     );
 
     // Validate amount using the centralized validation method
-    const amountValidation = this.validateAmount(amount, orderId);
+    const amountValidation = await this.validateAmount(amount, orderId);
     if (!amountValidation.valid) {
       return {
         success: false,
@@ -603,12 +609,16 @@ export class PaymeService {
         };
       }
 
-      // Check if there's already a transaction for this order
+      // Check if there's already an active transaction for this order
+      // Only prevent if there's a CREATED state transaction (not PERFORMED or CANCELLED)
       const existingOrderTransaction =
         await this.transactionService.findByAccountOrderId(orderId);
-      if (existingOrderTransaction) {
+      if (
+        existingOrderTransaction &&
+        existingOrderTransaction.state === TransactionState.CREATED
+      ) {
         this.logger.log(
-          `Order ${orderId} already has a transaction ${existingOrderTransaction.id}, returning error code -31099`
+          `Order ${orderId} already has an active transaction ${existingOrderTransaction.id}, returning error code -31099`
         );
         return {
           success: false,
@@ -715,17 +725,30 @@ export class PaymeService {
         `Transaction ${id} found with state ${transaction.state}`
       );
 
-      // According to Payme specification, when transaction is cancelled (state -2),
-      // perform_time should be 0, not the actual perform_time value
+      // According to Payme specification:
+      // - For CREATED transactions (state: 1): perform_time should be 0
+      // - For PERFORMED transactions (state: 2): perform_time should be the actual timestamp
+      // - For CANCELLED transactions (state: -1): perform_time should be 0
+      // - For CANCELLED_AFTER_PERFORMED transactions (state: -2): perform_time should be the actual timestamp when it was performed
       let performTime = 0;
       if (transaction.state === TransactionState.PERFORMED) {
         // perform_time is now stored in milliseconds, so return it directly
-        performTime = transaction.perform_time || 0;
+        // Use !== null and !== undefined to properly handle 0 values
+        performTime =
+          transaction.perform_time !== null &&
+          transaction.perform_time !== undefined
+            ? transaction.perform_time
+            : 0;
       } else if (
         transaction.state === TransactionState.CANCELLED_AFTER_PERFORMED
       ) {
-        // For cancelled after performed transactions, perform_time should be 0
-        performTime = 0;
+        // For cancelled after performed transactions, perform_time should be the actual timestamp when it was performed
+        // This is the key fix - CANCELLED_AFTER_PERFORMED should return the original perform_time, not 0
+        performTime =
+          transaction.perform_time !== null &&
+          transaction.perform_time !== undefined
+            ? transaction.perform_time
+            : 0;
       } else if (transaction.state === TransactionState.CREATED) {
         // For created transactions, perform_time should be 0
         performTime = 0;
@@ -739,7 +762,7 @@ export class PaymeService {
         result: {
           create_time: transaction.create_time * 1000, // Convert to milliseconds
           perform_time: performTime,
-          cancel_time: transaction.cancel_time || 0, // cancel_time is now stored in milliseconds
+          cancel_time: transaction.cancel_time || 0, // cancel_time should be 0 if not set
           transaction: id, // Use the same transaction ID as passed in the request (consistent with PerformTransaction)
           state: transaction.state,
           reason: transaction.reason || null,
@@ -787,7 +810,10 @@ export class PaymeService {
         );
 
         // Ensure we have a valid perform_time for idempotency
-        if (!transaction.perform_time) {
+        if (
+          transaction.perform_time === null ||
+          transaction.perform_time === undefined
+        ) {
           this.logger.error(
             `Transaction ${id} is PERFORMED but has no perform_time stored`
           );

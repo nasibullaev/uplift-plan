@@ -182,7 +182,7 @@ export class PaymentController {
 
         if (amount !== undefined && orderId) {
           // Use the amount validation logic directly
-          const amountValidation = this.paymeService.validateAmount(
+          const amountValidation = await this.paymeService.validateAmount(
             amount,
             orderId
           );
