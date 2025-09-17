@@ -172,28 +172,8 @@ export class PaymentController {
         }
       }
 
-      // Second, validate amount if the method requires it
-      if (
-        callbackData.method === "CheckPerformTransaction" ||
-        callbackData.method === "CreateTransaction"
-      ) {
-        const amount = callbackData.params.amount;
-        const orderId = callbackData.params.account?.orderId;
-
-        if (amount !== undefined && orderId) {
-          // Use the amount validation logic directly
-          const amountValidation = await this.paymeService.validateAmount(
-            amount,
-            orderId
-          );
-          if (!amountValidation.valid) {
-            this.logger.warn(
-              `Amount validation failed: ${amountValidation.error} for amount ${amount}`
-            );
-            return { error: { code: -31001, message: "Invalid amount" } };
-          }
-        }
-      }
+      // Amount validation is now handled in the service methods
+      // to ensure proper order: orderId validation first, then amount validation
 
       // Then validate authorization
       const authHeader = req.headers.authorization;

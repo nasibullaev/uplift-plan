@@ -327,6 +327,7 @@ export class PaymeService {
 
   /**
    * Validate amount for Payme transactions
+   * This method assumes orderId is already validated
    */
   async validateAmount(
     amount: number,
@@ -441,6 +442,7 @@ export class PaymeService {
     this.logger.log(`Params:`, JSON.stringify(params, null, 2));
     this.logger.log(`Order ID: ${orderId}, Amount: ${amount}`);
 
+    // First validation: Check if orderId is provided
     if (!orderId) {
       this.logger.error(`Missing orderId in account params`);
       return {
@@ -449,7 +451,35 @@ export class PaymeService {
       };
     }
 
-    // Validate amount using the centralized validation method
+    // Second validation: Check if order exists in our system
+    try {
+      const order = await this.orderService.findByOrderId(orderId);
+      if (!order) {
+        this.logger.error(`Order ${orderId} not found`);
+        return {
+          success: false,
+          error: "Order not found",
+        };
+      }
+      this.logger.log(`Order ${orderId} found with status ${order.status}`);
+    } catch (error) {
+      this.logger.error(`Error checking order ${orderId}:`, error);
+      return {
+        success: false,
+        error: "Order not found",
+      };
+    }
+
+    // Third validation: Check if amount is provided and valid
+    if (!amount || typeof amount !== "number" || amount <= 0) {
+      this.logger.error(`Invalid amount: ${amount} for order ${orderId}`);
+      return {
+        success: false,
+        error: "Invalid amount",
+      };
+    }
+
+    // Fourth validation: Validate amount against order
     const amountValidation = await this.validateAmount(amount, orderId);
     this.logger.log(`Amount validation result:`, amountValidation);
 
@@ -461,22 +491,23 @@ export class PaymeService {
       };
     }
 
-    // Validate that the order exists and amount matches
+    // At this point, we know the order exists and amount matches
+    // Now check order status and existing transactions
     try {
-      this.logger.log(`Looking for order with ID: ${orderId}`);
-
-      // Check if order exists
       const order = await this.orderService.findByOrderId(orderId);
+
       this.logger.log(
-        `Order lookup result:`,
-        order ? `Found order with status ${order.status}` : `Order not found`
+        `Order lookup result: Found order with status ${order.status}`
       );
 
-      if (!order) {
-        this.logger.log(`Order ${orderId} not found - returning error`);
+      // Check if order is in correct status for payment
+      if (order.status !== OrderStatus.PENDING) {
+        this.logger.log(
+          `Order ${orderId} is not in PENDING status, current status: ${order.status}`
+        );
         return {
           success: false,
-          error: "Order not found",
+          error: "Order is not available for payment",
         };
       }
 
@@ -494,73 +525,70 @@ export class PaymeService {
       // Check order status and return appropriate response
       this.logger.log(`Checking order status: ${order.status}`);
 
-      switch (order.status) {
-        case "PENDING":
-        case "CREATED":
-          // Order is waiting for payment - allow transaction creation
-          this.logger.log(
-            `Order ${orderId} is waiting for payment - allowing transaction`
-          );
-          return {
-            success: true,
-            result: {
-              allow: true,
-              detail: {
-                receipt_type: 0, // 0 - for goods, 1 - for services
-                items: [
-                  {
-                    title: order.description || "Plan Upgrade",
-                    price: order.amount,
-                    count: 1,
-                    code: orderId,
-                    package_code: orderId,
-                    vat_percent: 0,
-                  },
-                ],
-              },
+      // Handle different order statuses
+      if (
+        order.status === OrderStatus.PENDING ||
+        order.status === OrderStatus.CREATED
+      ) {
+        // Order is waiting for payment - allow transaction creation
+        this.logger.log(
+          `Order ${orderId} is waiting for payment - allowing transaction`
+        );
+        return {
+          success: true,
+          result: {
+            allow: true,
+            detail: {
+              receipt_type: 0, // 0 - for goods, 1 - for services
+              items: [
+                {
+                  title: order.description || "Plan Upgrade",
+                  price: order.amount,
+                  count: 1,
+                  code: orderId,
+                  package_code: orderId,
+                  vat_percent: 0,
+                },
+              ],
             },
-          };
-
-        case "PAID":
-          // Order is already paid - return error
-          this.logger.log(`Order ${orderId} is already paid - returning error`);
-          return {
-            success: false,
-            error: "Order already paid",
-          };
-
-        case "CANCELLED":
-          // Order is cancelled - return error
-          this.logger.log(`Order ${orderId} is cancelled - returning error`);
-          return {
-            success: false,
-            error: "Order is cancelled",
-          };
-
-        case "FAILED":
-          // Order failed - return error
-          this.logger.log(`Order ${orderId} failed - returning error`);
-          return {
-            success: false,
-            error: "Order failed",
-          };
-
-        case "REFUNDED":
-          // Order is refunded - return error
-          this.logger.log(`Order ${orderId} is refunded - returning error`);
-          return {
-            success: false,
-            error: "Order is refunded",
-          };
-
-        default:
-          this.logger.log(
-            `Order ${orderId} has unknown status: ${order.status} - returning error`
-          );
-          return {
-            success: false,
-            error: "Invalid order status",
-          };
+          },
+        };
+      } else if (order.status === OrderStatus.PAID) {
+        // Order is already paid - return error
+        this.logger.log(`Order ${orderId} is already paid - returning error`);
+        return {
+          success: false,
+          error: "Order already paid",
+        };
+      } else if (order.status === OrderStatus.CANCELLED) {
+        // Order is cancelled - return error
+        this.logger.log(`Order ${orderId} is cancelled - returning error`);
+        return {
+          success: false,
+          error: "Order is cancelled",
+        };
+      } else if (order.status === OrderStatus.FAILED) {
+        // Order failed - return error
+        this.logger.log(`Order ${orderId} failed - returning error`);
+        return {
+          success: false,
+          error: "Order failed",
+        };
+      } else if (order.status === OrderStatus.REFUNDED) {
+        // Order is refunded - return error
+        this.logger.log(`Order ${orderId} is refunded - returning error`);
+        return {
+          success: false,
+          error: "Order is refunded",
+        };
+      } else {
+        this.logger.log(
+          `Order ${orderId} has unknown status: ${order.status} - returning error`
+        );
+        return {
+          success: false,
+          error: "Invalid order status",
+        };
       }
     } catch (error) {
       this.logger.error(`Error checking order ${orderId}:`, error);
@@ -584,7 +612,35 @@ export class PaymeService {
       `Creating transaction ${id} for order ${orderId} with amount ${amount}`
     );
 
-    // Validate amount using the centralized validation method
+    // First validation: Check if orderId is provided
+    if (!orderId) {
+      this.logger.error(`Missing orderId in account params`);
+      return {
+        success: false,
+        error: "Missing orderId",
+      };
+    }
+
+    // Second validation: Check if order exists in our system
+    try {
+      const order = await this.orderService.findByOrderId(orderId);
+      if (!order) {
+        this.logger.error(`Order ${orderId} not found`);
+        return {
+          success: false,
+          error: "Order not found",
+        };
+      }
+      this.logger.log(`Order ${orderId} found with status ${order.status}`);
+    } catch (error) {
+      this.logger.error(`Error checking order ${orderId}:`, error);
+      return {
+        success: false,
+        error: "Order not found",
+      };
+    }
+
+    // Third validation: Validate amount using the centralized validation method
     const amountValidation = await this.validateAmount(amount, orderId);
     if (!amountValidation.valid) {
       return {
@@ -729,7 +785,7 @@ export class PaymeService {
       // - For CREATED transactions (state: 1): perform_time should be 0
       // - For PERFORMED transactions (state: 2): perform_time should be the actual timestamp
       // - For CANCELLED transactions (state: -1): perform_time should be 0
-      // - For CANCELLED_AFTER_PERFORMED transactions (state: -2): perform_time should be the actual timestamp when it was performed
+      // - For CANCELLED_AFTER_PERFORMED transactions (state: -2): perform_time should be the actual timestamp when performed
       let performTime = 0;
       if (transaction.state === TransactionState.PERFORMED) {
         // perform_time is now stored in milliseconds, so return it directly
@@ -742,8 +798,7 @@ export class PaymeService {
       } else if (
         transaction.state === TransactionState.CANCELLED_AFTER_PERFORMED
       ) {
-        // For cancelled after performed transactions, perform_time should be the actual timestamp when it was performed
-        // This is the key fix - CANCELLED_AFTER_PERFORMED should return the original perform_time, not 0
+        // For cancelled after performed transactions, perform_time should contain the actual timestamp when performed
         performTime =
           transaction.perform_time !== null &&
           transaction.perform_time !== undefined
