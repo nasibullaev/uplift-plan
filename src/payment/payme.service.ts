@@ -948,6 +948,9 @@ export class PaymeService {
         );
       }
 
+      // Update user plan automatically
+      await this.updateUserPlanForPaidOrder(transaction);
+
       this.logger.log(`Transaction ${id} performed successfully`);
       this.logger.log(`performTime in seconds: ${performTimeSeconds}`);
       this.logger.log(`performTimeMilliseconds: ${performTimeMilliseconds}`);
@@ -1177,6 +1180,105 @@ export class PaymeService {
    */
   convertToUzs(tiyinAmount: number): number {
     return tiyinAmount / 100;
+  }
+
+  /**
+   * Update user plan for paid order
+   */
+  private async updateUserPlanForPaidOrder(transaction: any): Promise<void> {
+    try {
+      const orderId = transaction.account.orderId;
+      if (!orderId) {
+        this.logger.error("No order ID found in transaction");
+        return;
+      }
+
+      // Extract user ID and plan ID from order ID
+      const orderParts = orderId.split("_");
+      if (orderParts.length < 4) {
+        this.logger.error(`Invalid order ID format: ${orderId}`);
+        return;
+      }
+
+      const userId = orderParts[1];
+      const planId = orderParts[2];
+
+      this.logger.log(
+        `Updating user plan for order ${orderId} - userId: ${userId}, planId: ${planId}`
+      );
+
+      // Find user's current plan
+      const userPlans = await this.userPlanService.findByUserId(userId);
+      let userPlan;
+
+      if (!userPlans || userPlans.length === 0) {
+        this.logger.log(
+          `No user plan found for user ${userId}, creating one...`
+        );
+        // Create a free plan for the user first
+        userPlan = await this.userPlanService.createFreePlanForUser(userId);
+        this.logger.log(`Created free plan for user ${userId}`);
+      } else {
+        userPlan = userPlans[0];
+        this.logger.log(
+          `Found user plan: ${userPlan._id}, current plan: ${userPlan.plan}`
+        );
+      }
+
+      // Find the target plan
+      const targetPlan = await this.planService.findOne(planId);
+      if (!targetPlan) {
+        this.logger.error(`Target plan not found: ${planId}`);
+        return;
+      }
+
+      this.logger.log(
+        `Found target plan: ${targetPlan.title}, price: ${targetPlan.price}`
+      );
+
+      // Update user plan with new plan details
+      userPlan.plan = planId;
+      userPlan.paymentStatus = "COMPLETED";
+      userPlan.totalPaidAmount += targetPlan.price || 0;
+      userPlan.lastPaymentDate = new Date();
+      userPlan.subscriptionType = "PAID";
+      userPlan.hasPaidPlan = true;
+      userPlan.subscriptionStartDate = new Date();
+      userPlan.subscriptionEndDate = new Date(
+        Date.now() + (targetPlan.durationInDays || 30) * 24 * 60 * 60 * 1000
+      );
+      userPlan.nextPaymentDate = new Date(
+        Date.now() + (targetPlan.durationInDays || 30) * 24 * 60 * 60 * 1000
+      );
+      userPlan.submissionsLimit =
+        targetPlan.maxSubmissions || userPlan.submissionsLimit;
+      userPlan.features = targetPlan.features || userPlan.features;
+      userPlan.status = "ACTIVE";
+      userPlan.isActive = true;
+
+      // Add payment history
+      userPlan.metadata = {
+        ...userPlan.metadata,
+        paymentHistory: [
+          ...(userPlan.metadata?.paymentHistory || []),
+          {
+            orderId,
+            transactionId: transaction.id,
+            planId,
+            amount: targetPlan.price,
+            amountInTiyin: transaction.amount,
+            paymentMethod: "Payme",
+            completedAt: new Date(),
+          },
+        ],
+      };
+
+      await userPlan.save();
+
+      this.logger.log(`Successfully updated user ${userId} to plan ${planId}`);
+    } catch (error) {
+      this.logger.error("Error updating user plan for paid order:", error);
+    }
   }
 
   /**

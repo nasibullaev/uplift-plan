@@ -24,8 +24,14 @@ import {
 } from "./payme.service";
 import { UserPlanService } from "../user-plan/user-plan.service";
 import { PlanService } from "../plan/plan.service";
+import { TransactionService } from "../transactions/transaction.service";
+import { OrderService } from "../orders/order.service";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
-import { PaymentDto, PaymeCallbackDto } from "./dto/payment.dto";
+import { PaymentDto, PaymeCallbackDto, PaymentMethod } from "./dto/payment.dto";
+import {
+  OrderStatus,
+  PaymentMethod as OrderPaymentMethod,
+} from "../orders/schemas/order.schema";
 import {
   PaymentStatus,
   SubscriptionType,
@@ -40,7 +46,9 @@ export class PaymentController {
   constructor(
     private readonly paymeService: PaymeService,
     private readonly userPlanService: UserPlanService,
-    private readonly planService: PlanService
+    private readonly planService: PlanService,
+    private readonly transactionService: TransactionService,
+    private readonly orderService: OrderService
   ) {}
 
   @Post("create")
@@ -55,9 +63,11 @@ export class PaymentController {
   @ApiResponse({ status: 401, description: "Unauthorized" })
   async createPayment(@Body() paymentDto: PaymentDto, @Request() req) {
     const userId = req.user.sub;
-    const { planId, returnUrl } = paymentDto;
+    const { planId, paymentMethod, returnUrl } = paymentDto;
 
-    this.logger.log(`Creating payment for user ${userId} to plan ${planId}`);
+    this.logger.log(
+      `Creating payment for user ${userId} to plan ${planId} using ${paymentMethod}`
+    );
 
     // Find the target plan
     const targetPlan = await this.planService.findOne(planId);
@@ -90,36 +100,36 @@ export class PaymentController {
     // Generate unique order ID
     const orderId = `order_${userId}_${planId}_${Date.now()}`;
 
-    // Convert amount to tiyin (Payme uses tiyin as the smallest unit)
+    // Convert amount to tiyin for Payme compatibility
     const amountInTiyin = this.paymeService.convertToTiyin(targetPlan.price);
 
-    // Create payment request
-    const paymentRequest: PaymePaymentRequest = {
+    // Map payment method to order payment method enum
+    const orderPaymentMethod =
+      paymentMethod === PaymentMethod.PAYME
+        ? OrderPaymentMethod.PAYME
+        : OrderPaymentMethod.CLICK;
+
+    // Create order in database
+    const order = await this.orderService.createOrder(
       orderId,
-      amount: amountInTiyin,
-      description: `Upgrade to ${targetPlan.title} plan`,
-      returnUrl,
-    };
-
-    const paymentResponse =
-      await this.paymeService.createPayment(paymentRequest);
-
-    if (!paymentResponse.success) {
-      throw new BadRequestException(
-        paymentResponse.error || "Payment creation failed"
-      );
-    }
+      userId,
+      planId,
+      orderPaymentMethod,
+      targetPlan.price,
+      amountInTiyin,
+      `Upgrade to ${targetPlan.title} plan`,
+      returnUrl
+    );
 
     // Store payment information in user plan metadata
     currentUserPlan.metadata = {
       ...currentUserPlan.metadata,
       pendingPayment: {
         orderId,
-        transactionId: paymentResponse.transactionId,
         planId,
         amount: targetPlan.price,
-        amountInTiyin,
-        paymentUrl: paymentResponse.paymentUrl,
+        paymentMethod: paymentMethod,
+        returnUrl,
         createdAt: new Date(),
       },
     };
@@ -127,15 +137,13 @@ export class PaymentController {
     await currentUserPlan.save();
 
     return {
-      message: "Payment created successfully",
+      message: "Payment order created successfully",
       data: {
-        paymentUrl: paymentResponse.paymentUrl,
         orderId,
-        transactionId: paymentResponse.transactionId,
         amount: targetPlan.price,
         planName: targetPlan.title,
-        instructions:
-          "Complete the payment in the Payme interface to activate your plan",
+        paymentMethod: paymentMethod,
+        instructions: "Use the orderId to initialize payment on the frontend",
       },
     };
   }
@@ -308,6 +316,16 @@ export class PaymentController {
       // Process the callback
       const result = await this.paymeService.handleCallback(callbackData);
 
+      // Handle successful payment - Payme uses PerformTransaction method
+      if (callbackData.method === "PerformTransaction" && result.success) {
+        await this.handleSuccessfulPayment(callbackData);
+      }
+
+      // Handle cancelled payment - Payme uses CancelTransaction method
+      if (callbackData.method === "CancelTransaction" && result.success) {
+        await this.handleCancelledPayment(callbackData);
+      }
+
       if (!result.success) {
         this.logger.error("Callback processing failed:", result.error);
 
@@ -372,11 +390,6 @@ export class PaymentController {
         return { error: { code: -31000, message: "Unknown error" } };
       }
 
-      // Handle successful payment - Payme uses PerformTransaction method
-      if (callbackData.method === "PerformTransaction") {
-        await this.handleSuccessfulPayment(callbackData);
-      }
-
       // Return the actual result from the service method
       return result.result
         ? { result: result.result }
@@ -387,234 +400,53 @@ export class PaymentController {
     }
   }
 
-  @Post("debug-config")
+  @Post("fix-paid-order")
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth("JWT-auth")
-  @ApiOperation({ summary: "Debug Payme configuration" })
-  async debugConfig(@Request() req) {
-    const userId = req.user.sub;
+  @ApiOperation({ summary: "Fix user plan for already paid order" })
+  @ApiResponse({ status: 200, description: "Order fixed successfully" })
+  async fixPaidOrder(@Body() body: { orderId: string }, @Request() req) {
+    const { orderId } = body;
 
-    return {
-      message: "Payme configuration debug",
-      data: {
-        userId,
-        merchantId: this.paymeService["merchantId"] ? "SET" : "NOT SET",
-        merchantKey: this.paymeService["merchantKey"] ? "SET" : "NOT SET",
-        baseUrl: this.paymeService["baseUrl"],
-        callbackUrl: this.paymeService["callbackUrl"],
-        environment: process.env.NODE_ENV,
-      },
-    };
-  }
+    this.logger.log(`Fixing paid order: ${orderId}`);
 
-  @Post("debug-signature")
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth("JWT-auth")
-  @ApiOperation({ summary: "Debug Payme signature generation" })
-  async debugSignature(@Request() req) {
-    const userId = req.user.sub;
-    const signatureTest = this.paymeService.testSignatureGeneration();
+    try {
+      // Find the order
+      const order = await this.orderService.findByOrderId(orderId);
+      if (!order) {
+        throw new NotFoundException(`Order ${orderId} not found`);
+      }
 
-    return {
-      message: "Payme signature debug",
-      data: {
-        userId,
-        signatureTest,
-      },
-    };
-  }
+      if (order.status !== OrderStatus.PAID) {
+        throw new BadRequestException(
+          `Order ${orderId} is not paid. Current status: ${order.status}`
+        );
+      }
 
-  @Post("create-direct")
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth("JWT-auth")
-  @ApiOperation({
-    summary: "Create payment URL using GET method (most reliable)",
-  })
-  @ApiResponse({ status: 200, description: "Payment URL created successfully" })
-  @ApiResponse({ status: 400, description: "Invalid request" })
-  async createDirectPayment(
-    @Body() body: { planId: string; returnUrl?: string },
-    @Request() req
-  ) {
-    const userId = req.user.sub;
-    const { planId, returnUrl } = body;
-
-    this.logger.log(
-      `Creating direct payment URL for user ${userId} to plan ${planId}`
-    );
-
-    // Find the target plan
-    const targetPlan = await this.planService.findOne(planId);
-    if (!targetPlan) {
-      throw new NotFoundException(`Plan with ID ${planId} not found`);
-    }
-
-    // Generate unique order ID
-    const orderId = `order_${userId}_${planId}_${Date.now()}`;
-    const amountInTiyin = this.paymeService.convertToTiyin(targetPlan.price);
-
-    // Create direct payment URL (no API call needed)
-    const paymentUrl = this.paymeService.createDirectPaymentUrl(
-      orderId,
-      amountInTiyin,
-      returnUrl
-    );
-
-    return {
-      message: "Direct payment URL created successfully",
-      data: {
-        paymentUrl,
-        orderId,
-        amount: targetPlan.price,
-        planName: targetPlan.title,
-        instructions: "Open the payment URL to complete your payment",
-      },
-    };
-  }
-
-  @Post("create-receipt")
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth("JWT-auth")
-  @ApiOperation({ summary: "Create payment using receipts.create method" })
-  @ApiResponse({ status: 200, description: "Payment created successfully" })
-  @ApiResponse({ status: 400, description: "Invalid request" })
-  async createReceiptPayment(@Body() body: { planId: string }, @Request() req) {
-    const userId = req.user.sub;
-    const { planId } = body;
-
-    this.logger.log(
-      `Creating receipt payment for user ${userId} to plan ${planId}`
-    );
-
-    // Find the target plan
-    const targetPlan = await this.planService.findOne(planId);
-    if (!targetPlan) {
-      throw new NotFoundException(`Plan with ID ${planId} not found`);
-    }
-
-    // Generate unique order ID
-    const orderId = `order_${userId}_${planId}_${Date.now()}`;
-    const amountInTiyin = this.paymeService.convertToTiyin(targetPlan.price);
-
-    // Try receipt payment creation
-    const paymentResponse = await this.paymeService.createReceiptPayment(
-      orderId,
-      amountInTiyin,
-      `Upgrade to ${targetPlan.title} plan`
-    );
-
-    if (!paymentResponse.success) {
-      throw new BadRequestException(
-        paymentResponse.error || "Payment creation failed"
+      // Find the transaction
+      const transaction = await this.transactionService.findByPaymeId(
+        order.transactionId
       );
+      if (!transaction) {
+        throw new NotFoundException(
+          `Transaction not found for order ${orderId}`
+        );
+      }
+
+      // Update user plan using the same logic as automatic update
+      await this.paymeService["updateUserPlanForPaidOrder"](transaction);
+
+      return {
+        message: "Order fixed successfully",
+        data: {
+          orderId,
+          status: "fixed",
+        },
+      };
+    } catch (error) {
+      this.logger.error("Error fixing paid order:", error);
+      throw error;
     }
-
-    return {
-      message: "Receipt payment created successfully",
-      data: {
-        paymentUrl: paymentResponse.paymentUrl,
-        orderId,
-        transactionId: paymentResponse.transactionId,
-        amount: targetPlan.price,
-        planName: targetPlan.title,
-      },
-    };
-  }
-
-  @Post("create-simple")
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth("JWT-auth")
-  @ApiOperation({
-    summary: "Create payment with minimal parameters (for testing)",
-  })
-  @ApiResponse({ status: 200, description: "Payment created successfully" })
-  @ApiResponse({ status: 400, description: "Invalid request" })
-  async createPaymentSimple(@Body() body: { planId: string }, @Request() req) {
-    const userId = req.user.sub;
-    const { planId } = body;
-
-    this.logger.log(
-      `Creating simple payment for user ${userId} to plan ${planId}`
-    );
-
-    // Find the target plan
-    const targetPlan = await this.planService.findOne(planId);
-    if (!targetPlan) {
-      throw new NotFoundException(`Plan with ID ${planId} not found`);
-    }
-
-    // Generate unique order ID
-    const orderId = `order_${userId}_${planId}_${Date.now()}`;
-    const amountInTiyin = this.paymeService.convertToTiyin(targetPlan.price);
-
-    // Try simple payment creation
-    const paymentResponse = await this.paymeService.createPaymentSimple(
-      orderId,
-      amountInTiyin,
-      `Upgrade to ${targetPlan.title} plan`
-    );
-
-    if (!paymentResponse.success) {
-      throw new BadRequestException(
-        paymentResponse.error || "Payment creation failed"
-      );
-    }
-
-    return {
-      message: "Simple payment created successfully",
-      data: {
-        paymentUrl: paymentResponse.paymentUrl,
-        orderId,
-        transactionId: paymentResponse.transactionId,
-        amount: targetPlan.price,
-        planName: targetPlan.title,
-      },
-    };
-  }
-
-  @Post("verify")
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth("JWT-auth")
-  @ApiOperation({ summary: "Verify payment status" })
-  @ApiResponse({ status: 200, description: "Payment status verified" })
-  @ApiResponse({ status: 400, description: "Invalid transaction ID" })
-  async verifyPayment(@Body() body: { transactionId: string }, @Request() req) {
-    const userId = req.user.sub;
-    const { transactionId } = body;
-
-    this.logger.log(`Verifying payment ${transactionId} for user ${userId}`);
-
-    const paymentStatus =
-      await this.paymeService.checkPaymentStatus(transactionId);
-
-    if (!paymentStatus) {
-      throw new BadRequestException(
-        "Payment not found or invalid transaction ID"
-      );
-    }
-
-    // Payment states in Payme:
-    // 0 - waiting
-    // 1 - paid
-    // 2 - cancelled
-    // -1 - cancelled after paid
-
-    const statusMap = {
-      0: "WAITING",
-      1: "PAID",
-      2: "CANCELLED",
-      "-1": "CANCELLED_AFTER_PAID",
-    };
-
-    return {
-      message: "Payment status retrieved successfully",
-      data: {
-        transactionId,
-        status: statusMap[paymentStatus.state] || "UNKNOWN",
-        amount: this.paymeService.convertToUzs(paymentStatus.amount),
-        amountInTiyin: paymentStatus.amount,
-      },
-    };
   }
 
   /**
@@ -661,20 +493,35 @@ export class PaymentController {
       const userId = orderParts[1];
       const planId = orderParts[2];
 
+      this.logger.log(`Extracted userId: ${userId}, planId: ${planId}`);
+
       // Find user's current plan
       const userPlans = await this.userPlanService.findByUserId(userId);
+      let userPlan;
+
       if (!userPlans || userPlans.length === 0) {
-        this.logger.error(`User plan not found for user ${userId}`);
-        return;
+        this.logger.log(
+          `No user plan found for user ${userId}, creating one...`
+        );
+        // Create a free plan for the user first
+        userPlan = await this.userPlanService.createFreePlanForUser(userId);
+        this.logger.log(`Created free plan for user ${userId}`);
+      } else {
+        userPlan = userPlans[0];
+        this.logger.log(
+          `Found user plan: ${userPlan._id}, current plan: ${userPlan.plan}`
+        );
       }
 
-      const userPlan = userPlans[0];
-
-      // Verify the pending payment matches
+      // Verify the pending payment matches (if it exists)
       const pendingPayment = userPlan.metadata?.pendingPayment;
-      if (!pendingPayment || pendingPayment.orderId !== orderId) {
+      this.logger.log(`Pending payment metadata:`, pendingPayment);
+
+      // If no pending payment exists, we can still process the payment
+      // This handles cases where the user plan was created after payment
+      if (pendingPayment && pendingPayment.orderId !== orderId) {
         this.logger.error(
-          `Pending payment not found or mismatch for order ${orderId}`
+          `Pending payment mismatch for order ${orderId}. Expected: ${orderId}, Found: ${pendingPayment?.orderId}`
         );
         return;
       }
@@ -685,6 +532,10 @@ export class PaymentController {
         this.logger.error(`Target plan not found: ${planId}`);
         return;
       }
+
+      this.logger.log(
+        `Found target plan: ${targetPlan.title}, price: ${targetPlan.price}`
+      );
 
       // Update user plan with new plan details
       userPlan.plan = planId;
@@ -729,6 +580,121 @@ export class PaymentController {
       this.logger.log(`Successfully updated user ${userId} to plan ${planId}`);
     } catch (error) {
       this.logger.error("Error handling successful payment:", error);
+    }
+  }
+
+  /**
+   * Handle cancelled payment completion
+   */
+  private async handleCancelledPayment(
+    callbackData: PaymeCallbackData
+  ): Promise<void> {
+    try {
+      const { params } = callbackData;
+      const transactionId = params.id;
+      const reason = params.reason;
+
+      this.logger.log(
+        `Processing cancelled payment for transaction ${transactionId} with reason ${reason}`
+      );
+
+      // Find the transaction to get order information
+      const transaction =
+        await this.transactionService.findByPaymeId(transactionId);
+      if (!transaction) {
+        this.logger.error(`Transaction ${transactionId} not found`);
+        return;
+      }
+
+      const orderId = transaction.account.orderId;
+      if (!orderId) {
+        this.logger.error(
+          `Order ID not found for transaction ${transactionId}`
+        );
+        return;
+      }
+
+      // Extract user ID and plan ID from order ID
+      const orderParts = orderId.split("_");
+      if (orderParts.length < 4) {
+        this.logger.error(`Invalid order ID format: ${orderId}`);
+        return;
+      }
+
+      const userId = orderParts[1];
+      const planId = orderParts[2];
+
+      this.logger.log(
+        `Cancelling payment for user ${userId}, plan ${planId}, order ${orderId}`
+      );
+
+      // Find user's current plan
+      const userPlans = await this.userPlanService.findByUserId(userId);
+      if (!userPlans || userPlans.length === 0) {
+        this.logger.error(`User plan not found for user ${userId}`);
+        return;
+      }
+
+      const userPlan = userPlans[0];
+
+      // Check if this cancellation is for a payment that was already processed
+      // Only revert if the user is currently on the plan that was paid for
+      if (userPlan.plan.toString() === planId && userPlan.hasPaidPlan) {
+        this.logger.log(
+          `Reverting user ${userId} from paid plan ${planId} due to cancellation`
+        );
+
+        // Find the free plan to revert to
+        const freePlans = await this.planService.findByType("FREE");
+        if (!freePlans || freePlans.length === 0) {
+          this.logger.error(`Free plan not found for user ${userId}`);
+          return;
+        }
+        const freePlan = freePlans[0]; // Get the first free plan
+
+        // Revert user plan to free plan
+        userPlan.plan = (freePlan as any)._id.toString();
+        userPlan.paymentStatus = PaymentStatus.COMPLETED; // Keep as completed for free plan
+        userPlan.subscriptionType = SubscriptionType.FREE;
+        userPlan.hasPaidPlan = false;
+        userPlan.subscriptionStartDate = new Date();
+        userPlan.subscriptionEndDate = new Date(
+          Date.now() + 365 * 24 * 60 * 60 * 1000
+        ); // 1 year for free plan
+        userPlan.nextPaymentDate = undefined;
+        userPlan.submissionsLimit = freePlan.maxSubmissions || 5; // Default free plan limit
+        userPlan.features = freePlan.features || [];
+        userPlan.status = UserPlanStatus.ACTIVE;
+        userPlan.isActive = true;
+
+        // Add cancellation metadata
+        userPlan.metadata = {
+          ...userPlan.metadata,
+          cancellationHistory: [
+            ...(userPlan.metadata?.cancellationHistory || []),
+            {
+              orderId,
+              transactionId,
+              cancelledPlanId: planId,
+              cancellationReason: reason,
+              cancelledAt: new Date(),
+              revertedToFreePlan: true,
+            },
+          ],
+        };
+
+        await userPlan.save();
+
+        this.logger.log(
+          `Successfully reverted user ${userId} to free plan due to payment cancellation`
+        );
+      } else {
+        this.logger.log(
+          `User ${userId} is not on the cancelled plan ${planId}, no action needed`
+        );
+      }
+    } catch (error) {
+      this.logger.error("Error handling cancelled payment:", error);
     }
   }
 }

@@ -203,4 +203,109 @@ export class IELTSAIController {
       analysis: result.analysis,
     };
   }
+
+  @Post("improved-version/:id")
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth("JWT-auth")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Generate improved version of IELTS writing submission",
+    description:
+      "Generates an improved version of an IELTS writing submission using AI. The improved version is tailored to the user's target score and provides a better example of how the essay could be written.",
+  })
+  @ApiResponse({
+    status: 200,
+    description: "Improved version generated successfully",
+    schema: {
+      type: "object",
+      properties: {
+        message: {
+          type: "string",
+          example: "Improved version generated successfully",
+        },
+        submissionId: {
+          type: "string",
+          example: "68c0649e2d28176e17649eeb",
+        },
+        improvedVersion: {
+          type: "object",
+          properties: {
+            band7: {
+              type: "object",
+              properties: {
+                introduction: {
+                  type: "string",
+                  example:
+                    "This is a Band 7 improved introduction paragraph...",
+                },
+                body: {
+                  type: "array",
+                  items: {
+                    type: "string",
+                  },
+                  example: [
+                    "This is a Band 7 improved first body paragraph...",
+                    "This is a Band 7 improved second body paragraph...",
+                  ],
+                },
+                conclusion: {
+                  type: "string",
+                  example: "This is a Band 7 improved conclusion paragraph...",
+                },
+                criteriaResponse: {
+                  type: "object",
+                  properties: {
+                    taskResponse: {
+                      type: "string",
+                      example:
+                        "This Band 7 version fully addresses the question...",
+                    },
+                    coherence: {
+                      type: "string",
+                      example: "The Band 7 essay flows logically...",
+                    },
+                    lexical: {
+                      type: "string",
+                      example: "Uses appropriate Band 7 vocabulary...",
+                    },
+                    grammar: {
+                      type: "string",
+                      example: "Demonstrates good Band 7 grammar...",
+                    },
+                  },
+                },
+              },
+            },
+            band8: {
+              type: "object",
+              description:
+                "Band 8 improved version with more sophisticated language and structure",
+            },
+            band9: {
+              type: "object",
+              description:
+                "Band 9 improved version with expert-level language and flawless structure",
+            },
+          },
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 404, description: "Submission not found" })
+  @ApiResponse({
+    status: 401,
+    description: "Unauthorized - JWT token required",
+  })
+  @ApiResponse({
+    status: 500,
+    description: "Internal server error during improved version generation",
+  })
+  async generateImprovedVersion(@Param() params: ObjectIdDto) {
+    const result = await this.geminiService.generateImprovedVersion(params.id);
+    return {
+      message: "Improved version generated successfully",
+      submissionId: result.submissionId,
+      improvedVersion: result.improvedVersion,
+    };
+  }
 }

@@ -8,11 +8,25 @@ import {
 } from "class-validator";
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 
+export enum PaymentMethod {
+  PAYME = "Payme",
+  CLICK = "Click",
+}
+
 export class PaymentDto {
   @ApiProperty({ description: "Target plan ID to upgrade to" })
   @IsString()
   @IsNotEmpty()
   readonly planId: string;
+
+  @ApiProperty({
+    description: "Payment method",
+    enum: PaymentMethod,
+    example: PaymentMethod.PAYME,
+  })
+  @IsEnum(PaymentMethod)
+  @IsNotEmpty()
+  readonly paymentMethod: PaymentMethod;
 
   @ApiPropertyOptional({ description: "Return URL after payment completion" })
   @IsString()

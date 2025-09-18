@@ -136,6 +136,9 @@ export class IELTSWritingSubmission {
 
   @Prop({ type: AIFeedback })
   aiFeedback?: AIFeedback;
+
+  @Prop({ type: ImprovedVersions })
+  improvedVersion?: ImprovedVersions;
 }
 
 export const IELTSWritingSubmissionSchema = SchemaFactory.createForClass(
