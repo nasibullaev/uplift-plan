@@ -3,7 +3,7 @@ import { MongooseModule } from "@nestjs/mongoose";
 import { IELTSWritingSubmissionController } from "./ielts-writing-submission.controller";
 import { IELTSAIController } from "./ielts-ai.controller";
 import { IELTSWritingSubmissionService } from "./ielts-writing-submission.service";
-import { GeminiService } from "./gemini.service";
+import { OpenAIService } from "./openai.service";
 import { UserPlanService } from "../../user-plan/user-plan.service";
 import {
   IELTSWritingSubmission,
@@ -38,7 +38,7 @@ import { User, UserSchema } from "../../users/schemas/user.schema";
     ]),
   ],
   controllers: [IELTSWritingSubmissionController, IELTSAIController],
-  providers: [IELTSWritingSubmissionService, GeminiService, UserPlanService],
-  exports: [IELTSWritingSubmissionService, GeminiService],
+  providers: [IELTSWritingSubmissionService, OpenAIService, UserPlanService],
+  exports: [IELTSWritingSubmissionService, OpenAIService],
 })
 export class IELTSWritingSubmissionModule {}

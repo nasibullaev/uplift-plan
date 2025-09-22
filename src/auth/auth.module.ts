@@ -19,7 +19,7 @@ import { PlanModule } from "../plan/plan.module";
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({
         secret: configService.get<string>("JWT_SECRET") || "your-secret-key",
-        signOptions: { expiresIn: "24h" },
+        signOptions: { expiresIn: "365d" },
       }),
       inject: [ConfigService],
     }),

@@ -12,14 +12,14 @@ import {
   ApiResponse,
   ApiBearerAuth,
 } from "@nestjs/swagger";
-import { GeminiService } from "./gemini.service";
+import { OpenAIService } from "./openai.service";
 import { ObjectIdDto } from "./dto/ielts-writing-submission.dto";
 import { JwtAuthGuard } from "../../auth/guards/jwt-auth.guard";
 
 @ApiTags("ielts-ai")
 @Controller("ielts-ai")
 export class IELTSAIController {
-  constructor(private readonly geminiService: GeminiService) {}
+  constructor(private readonly openAIService: OpenAIService) {}
 
   @Post("analyze/:id")
   @UseGuards(JwtAuthGuard)
@@ -195,7 +195,7 @@ export class IELTSAIController {
     description: "Internal server error during analysis",
   })
   async analyzeSubmission(@Param() params: ObjectIdDto) {
-    const result = await this.geminiService.analyzeWritingSubmission(params.id);
+    const result = await this.openAIService.analyzeWritingSubmission(params.id);
     return {
       message: "Analysis completed successfully",
       submissionId: result.submissionId,
@@ -301,7 +301,7 @@ export class IELTSAIController {
     description: "Internal server error during improved version generation",
   })
   async generateImprovedVersion(@Param() params: ObjectIdDto) {
-    const result = await this.geminiService.generateImprovedVersion(params.id);
+    const result = await this.openAIService.generateImprovedVersion(params.id);
     return {
       message: "Improved version generated successfully",
       submissionId: result.submissionId,
