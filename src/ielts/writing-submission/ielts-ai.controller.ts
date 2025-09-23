@@ -5,6 +5,8 @@ import {
   HttpCode,
   HttpStatus,
   UseGuards,
+  ForbiddenException,
+  Request,
 } from "@nestjs/common";
 import {
   ApiTags,
@@ -14,12 +16,16 @@ import {
 } from "@nestjs/swagger";
 import { OpenAIService } from "./openai.service";
 import { ObjectIdDto } from "./dto/ielts-writing-submission.dto";
+import { UserPlanService } from "../../user-plan/user-plan.service";
 import { JwtAuthGuard } from "../../auth/guards/jwt-auth.guard";
 
 @ApiTags("ielts-ai")
 @Controller("ielts-ai")
 export class IELTSAIController {
-  constructor(private readonly openAIService: OpenAIService) {}
+  constructor(
+    private readonly openAIService: OpenAIService,
+    private readonly userPlanService: UserPlanService
+  ) {}
 
   @Post("analyze/:id")
   @UseGuards(JwtAuthGuard)
@@ -300,7 +306,15 @@ export class IELTSAIController {
     status: 500,
     description: "Internal server error during improved version generation",
   })
-  async generateImprovedVersion(@Param() params: ObjectIdDto) {
+  async generateImprovedVersion(@Param() params: ObjectIdDto, @Request() req) {
+    const canSee = await this.userPlanService.canSeeImprovedVersions(
+      req.user.sub
+    );
+    if (!canSee) {
+      throw new ForbiddenException(
+        "Your current trial does not include access to improved versions."
+      );
+    }
     const result = await this.openAIService.generateImprovedVersion(params.id);
     return {
       message: "Improved version generated successfully",

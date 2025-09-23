@@ -47,8 +47,24 @@ export class UserPlanController {
     description: "User plan retrieved successfully",
   })
   async getMyPlan(@Request() req) {
-    const userPlan = await this.userPlanService.findByUserId(req.user.sub);
-    return { data: userPlan };
+    const userId = req.user.sub;
+    const userPlans = await this.userPlanService.findByUserId(userId);
+    // Ensure experiment variant is assigned for FREE users without paid plan
+    let experimentVariant: "trial_a" | "trial_b" | undefined;
+    try {
+      experimentVariant =
+        await this.userPlanService.getOrAssignExperimentVariant(userId);
+    } catch (e) {
+      // If user plan not found or other errors, ignore variant assignment here
+    }
+
+    const data = (userPlans || []).map((plan: any) => ({
+      ...(plan.toObject?.() ? plan.toObject() : plan),
+      experimentVariant:
+        plan?.metadata?.experimentVariant || experimentVariant || undefined,
+    }));
+
+    return { data };
   }
 
   @Post("payment")

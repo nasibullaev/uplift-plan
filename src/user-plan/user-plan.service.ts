@@ -927,7 +927,32 @@ export class UserPlanService {
       };
     }
 
-    // Check submission limits
+    // Daily limit for FREE users without paid plan
+    if (
+      userPlan.subscriptionType === SubscriptionType.FREE &&
+      !userPlan.hasPaidPlan
+    ) {
+      const now = new Date();
+      const todayStart = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate()
+      );
+      const todayCount = await this.ieltsWritingSubmissionModel
+        .countDocuments({ user: userId, createdAt: { $gte: todayStart } })
+        .exec();
+
+      const dailyLimit = 1;
+      const remaining = Math.max(0, dailyLimit - todayCount);
+
+      return {
+        canSubmit: remaining > 0,
+        remainingSubmissions: remaining,
+        limit: dailyLimit,
+      };
+    }
+
+    // Monthly limits for non-free/paid plans
     const remainingSubmissions = Math.max(
       0,
       userPlan.submissionsLimit - userPlan.submissionsUsed
@@ -951,6 +976,57 @@ export class UserPlanService {
     userPlan.submissionsUsed += 1;
     userPlan.totalSubmissions += 1;
     await userPlan.save();
+  }
+
+  // A/B trial assignment and gating
+  async getOrAssignExperimentVariant(
+    userId: ObjectIdType
+  ): Promise<"trial_a" | "trial_b"> {
+    const userPlan = await this.userPlanModel.findOne({ user: userId }).exec();
+    if (!userPlan) {
+      throw new NotFoundException("User plan not found");
+    }
+
+    const variant = userPlan.metadata?.experimentVariant;
+    if (variant === "trial_a" || variant === "trial_b") {
+      return variant;
+    }
+
+    const assigned: "trial_a" | "trial_b" =
+      Math.random() < 0.5 ? "trial_a" : "trial_b";
+    userPlan.metadata = {
+      ...(userPlan.metadata || {}),
+      experimentVariant: assigned,
+    };
+    await userPlan.save();
+    return assigned;
+  }
+
+  async canSeeImprovedVersions(userId: ObjectIdType): Promise<boolean> {
+    const userPlan = await this.userPlanModel.findOne({ user: userId }).exec();
+    if (!userPlan) {
+      throw new NotFoundException("User plan not found");
+    }
+    // If user still has monthly submissions remaining, allow improved versions
+    const remainingMonthly = Math.max(
+      0,
+      (userPlan.submissionsLimit || 0) - (userPlan.submissionsUsed || 0)
+    );
+    if (remainingMonthly > 0) {
+      return true;
+    }
+
+    // Out of monthly limit: enable A/B trial only for FREE users without paid plan
+    if (
+      userPlan.subscriptionType === SubscriptionType.FREE &&
+      !userPlan.hasPaidPlan
+    ) {
+      const variant = await this.getOrAssignExperimentVariant(userId);
+      return variant === "trial_a";
+    }
+
+    // Paid/trial subscriptions: allow by default
+    return true;
   }
 
   async promoteUser(promoteUserDto: PromoteUserDto): Promise<UserPlan> {
