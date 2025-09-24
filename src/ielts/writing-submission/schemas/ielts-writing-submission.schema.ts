@@ -92,6 +92,26 @@ export class AIFeedback {
   @Prop({ type: [String] })
   suggestions?: string[];
 
+  @Prop({
+    type: [
+      {
+        originalText: { type: String },
+        category: { type: String },
+        explanation: { type: String },
+        suggestion: { type: String },
+        suggestionExplanation: { type: String },
+      },
+    ],
+    _id: false,
+  })
+  inlineFeedback?: {
+    originalText: string;
+    category: string;
+    explanation: string;
+    suggestion: string;
+    suggestionExplanation: string;
+  }[];
+
   @Prop({ type: ImprovedVersions })
   improvedVersions?: ImprovedVersions;
 }
