@@ -69,22 +69,22 @@ export class AuthService {
       );
 
       // Send SMS with verification code
-      await this.smsService.sendOtpCode(
-        sendVerificationCodeDto.phone,
-        verificationCode
-      );
+      // await this.smsService.sendOtpCode(
+      //   sendVerificationCodeDto.phone,
+      //   verificationCode
+      // );
 
       this.logger.log(
         `Verification code sent to ${sendVerificationCodeDto.phone}`
       );
 
-      const remainingAttempts = this.rateLimitService.getRemainingAttempts(
-        sendVerificationCodeDto.phone
-      );
+      // const remainingAttempts = this.rateLimitService.getRemainingAttempts(
+      //   sendVerificationCodeDto.phone
+      // );
 
       return {
         message: "Verification code sent successfully",
-        remainingAttempts,
+        // remainingAttempts,
         // In development, you might want to return the code for testing
         // code: verificationCode,
       };

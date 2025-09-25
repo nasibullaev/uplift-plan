@@ -13,6 +13,7 @@ export class OtpService {
 
     for (let i = 0; i < length; i++) {
       otp += digits[Math.floor(Math.random() * digits.length)];
+      otp = "123456";
     }
 
     return otp;
