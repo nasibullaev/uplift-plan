@@ -27,6 +27,46 @@ export class IELTSAIController {
     private readonly userPlanService: UserPlanService
   ) {}
 
+  @Post("analyze/scores/:id")
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth("JWT-auth")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Analyze IELTS writing submission - scores only",
+    description:
+      "Runs a fast AI analysis that returns only overall score and criteria scores.",
+  })
+  @ApiResponse({ status: 200, description: "Scores generated" })
+  async analyzeScores(@Param() params: ObjectIdDto) {
+    const result = await this.openAIService.analyzeWritingScores(params.id);
+    return {
+      message: "Scores generated successfully",
+      submissionId: result.submissionId,
+      status: result.status,
+      analysis: result.analysis,
+    };
+  }
+
+  @Post("analyze/feedback/:id")
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth("JWT-auth")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Analyze IELTS writing submission - feedback only",
+    description:
+      "Runs a follow-up AI analysis that returns feedback (mistakes, suggestions, inline feedback).",
+  })
+  @ApiResponse({ status: 200, description: "Feedback generated" })
+  async analyzeFeedback(@Param() params: ObjectIdDto) {
+    const result = await this.openAIService.analyzeWritingFeedback(params.id);
+    return {
+      message: "Feedback generated successfully",
+      submissionId: result.submissionId,
+      status: result.status,
+      aiFeedback: result.aiFeedback,
+    };
+  }
+
   @Post("analyze/:id")
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth("JWT-auth")

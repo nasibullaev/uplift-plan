@@ -18,6 +18,126 @@ export class OpenAIService {
     this.model = this.configService.get<string>("OPENAI_MODEL") || "gpt-4o";
   }
 
+  async analyzeWritingScores(submissionId: string): Promise<{
+    submissionId: string;
+    status: IELTSWritingSubmissionStatus;
+    analysis: { score: number; criteriaScores: any };
+  }> {
+    try {
+      await this.ieltsWritingSubmissionService.updateStatus(
+        submissionId,
+        IELTSWritingSubmissionStatus.IN_PROGRESS
+      );
+
+      const submission =
+        await this.ieltsWritingSubmissionService.findOne(submissionId);
+      if (!submission) {
+        throw new Error("Submission not found");
+      }
+
+      this.logger.log(
+        `Starting OpenAI quick scores analysis for submission ${submissionId}`
+      );
+
+      const scores = await this.generateScoresOnly(
+        submission.body,
+        String(submission.targetScore),
+        "gpt-4o"
+      );
+
+      await this.ieltsWritingSubmissionService[
+        "ieltsWritingSubmissionModel"
+      ].findByIdAndUpdate(
+        submissionId,
+        {
+          score: scores.score,
+          criteriaScores: scores.criteriaScores,
+        },
+        { new: true }
+      );
+
+      this.logger.log(`Scores analysis stored for submission ${submissionId}`);
+
+      return {
+        submissionId,
+        status: IELTSWritingSubmissionStatus.IN_PROGRESS,
+        analysis: {
+          score: scores.score,
+          criteriaScores: scores.criteriaScores,
+        },
+      };
+    } catch (error) {
+      this.logger.error(
+        `Failed to analyze scores for submission ${submissionId}:`,
+        error
+      );
+      await this.ieltsWritingSubmissionService.updateStatus(
+        submissionId,
+        IELTSWritingSubmissionStatus.FAILED_TO_CHECK
+      );
+      throw error;
+    }
+  }
+
+  async analyzeWritingFeedback(submissionId: string): Promise<{
+    submissionId: string;
+    status: IELTSWritingSubmissionStatus;
+    aiFeedback: any;
+  }> {
+    try {
+      const submission =
+        await this.ieltsWritingSubmissionService.findOne(submissionId);
+      if (!submission) {
+        throw new Error("Submission not found");
+      }
+
+      this.logger.log(
+        `Starting OpenAI feedback analysis for submission ${submissionId}`
+      );
+
+      const feedback = await this.generateFeedbackOnly(
+        submission.body,
+        String(submission.targetScore),
+        "gpt-5"
+      );
+
+      await this.ieltsWritingSubmissionService[
+        "ieltsWritingSubmissionModel"
+      ].findByIdAndUpdate(
+        submissionId,
+        {
+          aiFeedback: feedback,
+        },
+        { new: true }
+      );
+
+      await this.ieltsWritingSubmissionService.updateStatus(
+        submissionId,
+        IELTSWritingSubmissionStatus.ANALYZED
+      );
+
+      this.logger.log(
+        `Feedback analysis completed for submission ${submissionId}`
+      );
+
+      return {
+        submissionId,
+        status: IELTSWritingSubmissionStatus.ANALYZED,
+        aiFeedback: feedback,
+      };
+    } catch (error) {
+      this.logger.error(
+        `Failed to analyze feedback for submission ${submissionId}:`,
+        error
+      );
+      await this.ieltsWritingSubmissionService.updateStatus(
+        submissionId,
+        IELTSWritingSubmissionStatus.FAILED_TO_CHECK
+      );
+      throw error;
+    }
+  }
+
   async analyzeWritingSubmission(submissionId: string): Promise<any> {
     try {
       // Update status to IN_PROGRESS
@@ -244,8 +364,7 @@ json
         "suggestion": "The corrected or improved word/phrase.",
         "suggestionExplanation": "A very brief reason why the suggestion is better."
       }
-    ],
-    "improvedVersions": {}
+    ]
   }
 }`;
 
@@ -264,6 +383,89 @@ json
     } catch (error) {
       this.logger.error("Error parsing analysis response:", error);
       return this.getFallbackAnalysis();
+    }
+  }
+
+  private async generateScoresOnly(
+    body: string,
+    targetScore: string,
+    model: string
+  ) {
+    const prompt = `You are an AI IELTS essay evaluator. Return ONLY a single valid JSON object with the overall score and criteria scores.
+
+CRITICAL RULES:
+1. Respond with a single raw JSON object. No prose.
+2. Schema:
+{
+  "score": number,
+  "criteriaScores": {
+    "taskResponse": number,
+    "coherence": number,
+    "lexical": number,
+    "grammar": number
+  }
+}
+
+Context:
+* Target Score: "${targetScore}"
+* Essay: """${body}"""`;
+
+    const text = await this.createChatCompletionAndGetText("", prompt, model);
+    try {
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        return {
+          score: parsed.score,
+          criteriaScores: parsed.criteriaScores,
+        };
+      }
+      throw new Error("No JSON found in response");
+    } catch (error) {
+      this.logger.error("Error parsing scores-only response:", error);
+      const fallback = this.getFallbackAnalysis();
+      return { score: fallback.score, criteriaScores: fallback.criteriaScores };
+    }
+  }
+
+  private async generateFeedbackOnly(
+    body: string,
+    targetScore: string,
+    model: string
+  ) {
+    const prompt = `You are an AI IELTS essay evaluator. Return ONLY a single valid JSON object with concise feedback.
+
+CRITICAL RULES:
+1. Respond with a single raw JSON object. No prose.
+2. Schema:
+{
+  "mistakes": [string],
+  "suggestions": [string],
+  "inlineFeedback": [
+    {
+      "originalText": string,
+      "category": string,
+      "explanation": string,
+      "suggestion": string,
+      "suggestionExplanation": string
+    }
+  ]
+}
+
+Context:
+* Target Score: "${targetScore}"
+* Essay: """${body}"""`;
+
+    const text = await this.createChatCompletionAndGetText("", prompt, model);
+    try {
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        return JSON.parse(jsonMatch[0]);
+      }
+      throw new Error("No JSON found in response");
+    } catch (error) {
+      this.logger.error("Error parsing feedback-only response:", error);
+      return this.getFallbackAnalysis().aiFeedback;
     }
   }
 
