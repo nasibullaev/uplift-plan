@@ -93,7 +93,7 @@ export class PaymentController {
     }
 
     // Check if user is trying to upgrade to the same plan
-    if (currentUserPlan.plan.toString() === planId) {
+    if (currentUserPlan.plan?.toString() === planId) {
       throw new BadRequestException("You are already subscribed to this plan");
     }
 
