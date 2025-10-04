@@ -70,6 +70,22 @@ export class ImprovedVersion {
 
   @Prop({ type: CriteriaResponse })
   criteriaResponse: CriteriaResponse;
+
+  @Prop({
+    type: [
+      {
+        textsnippet: { type: String },
+        category: { type: String },
+        explanation: { type: String },
+      },
+    ],
+    _id: false,
+  })
+  inlineFeedback?: {
+    textsnippet: string;
+    category: string;
+    explanation: string;
+  }[];
 }
 
 @Schema({ _id: false })

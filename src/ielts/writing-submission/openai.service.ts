@@ -217,7 +217,10 @@ export class OpenAIService {
     }
   }
 
-  async generateImprovedVersion(submissionId: string): Promise<any> {
+  async generateImprovedVersion(
+    submissionId: string,
+    targetBand: string
+  ): Promise<any> {
     try {
       // Get the submission
       const submission =
@@ -231,21 +234,15 @@ export class OpenAIService {
         `Starting improved version generation for submission ${submissionId}`
       );
 
-      const improvedVersion = await this.generateImprovedEssay(
+      const improvedVersion = await this.generateImprovedEssayForTargetBand(
         submission.body,
-        String(submission.targetScore),
+        String(targetBand),
         "gpt-4o"
       );
 
       await this.ieltsWritingSubmissionService[
         "ieltsWritingSubmissionModel"
-      ].findByIdAndUpdate(
-        submissionId,
-        {
-          improvedVersion: improvedVersion,
-        },
-        { new: true }
-      );
+      ].findByIdAndUpdate(submissionId, { improvedVersion }, { new: true });
 
       this.logger.log(
         `Improved version generation completed for submission ${submissionId}`
@@ -469,94 +466,58 @@ Context:
     }
   }
 
-  private async generateImprovedEssay(
-    body: string,
-    targetScore: string,
+  private async generateImprovedEssayForTargetBand(
+    originalBody: string,
+    targetBand: string,
     model: string
   ) {
-    const structure = await this.detectEssayStructure(body, model);
+    const structure = await this.detectEssayStructure(originalBody, model);
 
-    const improvedVersionPrompt = `
-SYSTEM PERSONA
-You are a specialized, headless API endpoint for rewriting IELTS essays. Your sole function is to take an original essay and generate three distinct, improved versions targeting Band 7, 8, and 9, returning them within a single, valid JSON object.
+    const generateImprovedVersionWithFeedback = `
+Your task is to rewrite the original essay to meet the target band score. Respond with ONLY a single, raw JSON object adhering strictly to the schema.
 
-**CRITICAL DIRECTIVES**
+**Constraints:**
+*   Preserve the original essay's ideas and approximate word count.
+*   The 'body' array must contain exactly ${"${structure.body_count}"} paragraphs.
+*   All feedback must be positive, highlighting the strengths of the rewritten text.
+*   Each 'textsnippet' must be a short, unique phrase from your new rewritten essay.
 
-1.  **Primary Directive**: Your entire output **must** be a single, raw, valid JSON object.
-2.  **No Extraneous Text**: Absolutely no text or markdown formatting should surround the JSON object.
-3.  **Adhere to Schema**: The JSON structure must strictly follow the schema provided below, with "band7", "band8", and "band9" as the top-level keys.
-4.  **Preserve Brevity and Structure**: The three rewritten versions **must** maintain a similar word count and sentence volume to the 'Original Essay'. You **must** also preserve the original paragraph count for the body. Do not add new ideas.
+**Context:**
+*   Target Band Score: "${"${targetBand}"}"
+*   Original Essay: """${"${originalBody}"}"""
 
-**STEP-BY-STEP INTERNAL PROCESS**
-
-1.  **Analyze Core Ideas**: Understand the core arguments and structure of the "Original Essay".
-2.  **Generate Band 7 Version**: Rewrite the essay to a solid Band 7 level and write its corresponding criteria feedback.
-3.  **Generate Band 8 Version**: Rewrite the essay again to a more advanced Band 8 level and write its corresponding criteria feedback.
-4.  **Generate Band 9 Version**: Produce a final, expert-level Band 9 rewrite and write its corresponding criteria feedback.
-5.  **Assemble JSON**: Construct the final JSON object containing all three versions and their feedback, structured exactly as the schema requires.
-
-**CONTEXT**
-
-*   **Original Essay**: """${body}"""
-*   **Detected Structure**: Introduction: ${structure.has_intro}, Conclusion: ${structure.has_conclusion}, Body Paragraphs: ${structure.body_count}
-
-**MANDATORY STRUCTURAL RULE**
-
-*   **Preserve Body Paragraph Count**: The "body" array for each of the three improved versions MUST contain exactly **${structure.body_count}** string elements.
-
-Strictly adhere to the following JSON OUTPUT SCHEMA:
-json
+**Mandatory JSON Schema:**
 {
-  "band7": {
-    "introduction": "The full text of the rewritten introduction targeting a Band 7 score.",
-    "body": [
-      "The full text of the first rewritten body paragraph for Band 7.",
-      "The full text of the second rewritten body paragraph for Band 7."
-    ],
-    "conclusion": "The full text of the rewritten conclusion for Band 7.",
-    "criteriaResponse": {
-      "taskResponse": "General feedback on why this version's Task Response meets Band 7 criteria.",
-      "coherence": "General feedback on why this version's Coherence and Cohesion meets Band 7 criteria.",
-      "lexical": "General feedback on why this version's Lexical Resource meets Band 7 criteria.",
-      "grammar": "General feedback on why this version's Grammatical Range and Accuracy meets Band 7 criteria."
-    }
+  "introduction": "The rewritten introduction text.",
+  "body": [
+    "The first rewritten body paragraph.",
+    "The second rewritten body paragraph."
+  ],
+  "conclusion": "The rewritten conclusion text.",
+  "criteriaResponse": {
+    "taskResponse": "Positive feedback for Task Response.",
+    "coherence": "Positive feedback for Coherence and Cohesion.",
+    "lexical": "Positive feedback for Lexical Resource.",
+    "grammar": "Positive feedback for Grammatical Range."
   },
-  "band8": {
-    "introduction": "The full text of the rewritten introduction targeting a Band 8 score.",
-    "body": [
-      "The full text of the first rewritten body paragraph for Band 8.",
-      "The full text of the second rewritten body paragraph for Band 8."
-    ],
-    "conclusion": "The full text of the rewritten conclusion for Band 8.",
-    "criteriaResponse": {
-      "taskResponse": "General feedback on why this version's Task Response meets Band 8 criteria.",
-      "coherence": "General feedback on why this version's Coherence and Cohesion meets Band 8 criteria.",
-      "lexical": "General feedback on why this version's Lexical Resource meets Band 8 criteria.",
-      "grammar": "General feedback on why this version's Grammatical Range and Accuracy meets Band 8 criteria."
+  "inlineFeedback": [
+    {
+      "originalText": "A short, strong phrase from the new essay.",
+      "category": "Area of strength (e.g., 'Lexis', 'Structure').",
+      "explanation": "Brief reason why this phrase is good."
     }
-  },
-  "band9": {
-    "introduction": "The full text of the rewritten introduction targeting a Band 9 score.",
-    "body": [
-      "The full text of the first rewritten body paragraph for Band 9.",
-      "The full text of the second rewritten body paragraph for Band 9."
-    ],
-    "conclusion": "The full text of the rewritten conclusion for Band 9.",
-    "criteriaResponse": {
-      "taskResponse": "General feedback on why this version's Task Response fully and expertly addresses all parts of the task.",
-      "coherence": "General feedback on why this version's Coherence and Cohesion is seamless and skillfully managed.",
-      "lexical": "General feedback on why this version's Lexical Resource is sophisticated, natural, and precise.",
-      "grammar": "General feedback on why this version's Grammatical Range and Accuracy is flawless and complex."
-    }
-  }
+  ]
 }
 
-Final Instruction: Begin your response with {. Do not add any other text.
+Begin your response immediately with {.
 `;
 
     const text = await this.createChatCompletionAndGetText(
       "",
-      improvedVersionPrompt,
+      generateImprovedVersionWithFeedback
+        .replace("${structure.body_count}", String(structure.body_count))
+        .replace("${targetBand}", String(targetBand))
+        .replace("${originalBody}", String(originalBody)),
       model
     );
 
@@ -567,8 +528,11 @@ Final Instruction: Begin your response with {. Do not add any other text.
       }
       throw new Error("No JSON found in response");
     } catch (error) {
-      this.logger.error("Error parsing improved version response:", error);
-      return this.getFallbackImprovedVersion(targetScore);
+      this.logger.error(
+        "Error parsing improved version (target band) response:",
+        error
+      );
+      return this.getFallbackImprovedVersion(targetBand as any);
     }
   }
 
